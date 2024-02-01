@@ -4,29 +4,34 @@ This is the analysis of the PTACE2 KO dataset
 
 snRNAseq from
 
-The Cell Ranger Outputs can be found at GSE:XXXX
+The Cell Ranger Outputs can be found at GSE253448
 
 Sample Name / Mouse ID / Cre Status / Treatment
 
-#1	2584	Cre -	Saline
+#1	2584	Cre -	Saline <br>
+#2	2580	Cre +	AngII <br>
+#3	2583	Cre +	Saline <br>
+#4	2743	Cre -	AngII <br>
+#5	2582	Cre +	Saline <br>
+#6	2701	Cre -	AngII <br>
+#7	2744	Cre -	Saline <br>
+#8	2581	Cre +	AngII <br>
 
-#2	2580	Cre +	AngII
+File Index
 
-#3	2583	Cre +	Saline
-
-#4	2743	Cre -	AngII
-
-#5	2582	Cre +	Saline
-
-#6	2701	Cre -	AngII
-
-#7	2744	Cre -	Saline
-
-#8	2581	Cre +	AngII
-
-Files were 
-
-1) Preprocessed
-2) Integrated and Clusters Identified
-3) Analyzed for DEGS and Pathways
-4) 
+1) Preprocessing <br>
+   a) 2580_PT_ACE2_KO_AmbientRNA_Doublet_Removal.Rmd <br>
+   b) 2581_PT_ACE2_KO_AmbientRNA_Doublet_Removal.Rmd <br>
+   c) 2582_PT_ACE2_KO_AmbientRNA_Doublet_Removal.Rmd <br>
+   d) 2583_PT_ACE2_KO_AmbientRNA_Doublet_Removal.Rmd <br>
+   e) 2584_PT_ACE2_KO_AmbientRNA_Doublet_Removal.Rmd <br>
+   f) 2701_PT_ACE2_KO_AmbientRNA_Doublet_Removal.Rmd <br>
+   g) 2743_PT_ACE2_KO_AmbientRNA_Doublet_Removal.Rmd <br>
+   h) 2744_PT_ACE2_KO_AmbientRNA_Doublet_Removal.Rmd <br>
+3) Sample Integration and Cluster Identification <br>
+   a) PT_ACE2_KO_all_Merging and Integration_AllSamples.Rmd <br>
+   b) PT_ACE2_KO_AllSamples_clustering_jwn101823.Rmd <br>
+5) Analysis of DEGS and Pathways <br>
+6) Figures from Manuscript <br>
+   a) Figure 7 and 8.Rmd <br>
+   b) Supplemental Figures Final.Rmd <br>
