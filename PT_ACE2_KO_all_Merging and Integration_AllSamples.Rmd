@@ -1,0 +1,939 @@
+---
+title: "PT ACE2 KO Merge and Integration "
+author: "Jackie Emathinger Xiao-Tong Su"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 4
+    toc_float: 
+      collapsed: false
+      smooth_scroll: false
+    number_sections: yes
+    theme: bootstrap
+    df_print: paged
+    code_folding: hide
+    highlight: pygments
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages, echo=T, error=FALSE, message=FALSE, warning=FALSE}
+
+library("dplyr")
+library("Seurat")
+library("knitr")
+library("ggplot2")
+library("BiocManager")
+library("here")
+BiocManager::install("EnhancedVolcano")
+library("EnhancedVolcano") #volcano plot
+install.packages('DESeq2') #for DEG
+library("DESeq2")
+library("tidyverse") #tidy up data
+
+if (!require("RColorBrewer")) {install.packages("RColorBrewer"); require("RColorBrewer")} # for color brewer
+if (!require("sctransform")) {install.packages("sctransform"); require("sctransform")} # for data normalization
+if (!require("glmGamPoi")) {BiocManager::install('glmGamPoi'); require("glmGamPoi")} # for data normalization, sctransform
+if (!require("cowplot")) {install.packages("cowplot"); require("cowplot")} # for figure layout
+if (!require("patchwork")) {install.packages("patchwork"); require("patchwork")} # for figure patching
+if (!require("openxlsx")) {install.packages("openxlsx"); require("openxlsx")} # to save .xlsx files
+set.seed(12345)
+
+```
+
+# Analyze all cells
+
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+#Sample	Mouse ID	Genotype	Treatment	Enrichment	Cohort	Sample Processor
+#1	2584	Cre -	Saline	n/a	1	JWN
+#2	2580	Cre +	AngII	n/a	1	JWN
+#3	2583	Cre +	Saline	n/a	1	JME
+#4	2743	Cre -	AngII	n/a	1	JME
+#5	2582	Cre +	Saline	n/a	2	JWN
+#6	2701	Cre -	AngII	n/a	2	JWN
+#7	2744	Cre -	Saline	n/a	2	JME
+#8	2581	Cre +	AngII	n/a	2	JME
+
+ctrl <- readRDS(here("Temp Outputs", "2584.rds"))
+ctrl 
+#An object of class Seurat 
+#32272 features across 10917 samples within 1 assay 
+#Active assay: RNA (32272 features, 1988 variable features)
+# 2 dimensional reductions calculated: pca, umap
+
+ctrl2<- readRDS(here("Temp Outputs", "2743.rds"))
+ctrl2
+# An object of class Seurat 
+# 32272 features across 12450 samples within 1 assay 
+# Active assay: RNA (32272 features, 1992 variable features)
+# 2 dimensional reductions calculated: pca, umap
+
+ctrl3<- readRDS(here("Temp Outputs", "2701.rds"))
+ctrl3 
+# An object of class Seurat 
+# 32272 features across 8541 samples within 1 assay 
+# Active assay: RNA (32272 features, 1991 variable features)
+#  2 dimensional reductions calculated: pca, umap
+
+ctrl4 <-readRDS(here("Temp Outputs", "2744.rds"))
+ctrl4
+#An object of class Seurat 
+# 32272 features across 8012 samples within 1 assay 
+# Active assay: RNA (32272 features, 1994 variable features)
+# 2 dimensional reductions calculated: pca, umap
+
+exp <- readRDS(here("Temp Outputs", "2580.rds"))
+exp
+# An object of class Seurat 
+# 32272 features across 10412 samples within 1 assay 
+# Active assay: RNA (32272 features, 1988 variable features)
+# 2 dimensional reductions calculated: pca, umap
+
+exp2<-readRDS(here("Temp Outputs", "2583.rds"))
+exp2 
+
+#An object of class Seurat 
+#32272 features across 13413 samples within 1 assay 
+#Active assay: RNA (32272 features, 1989 variable features)
+# 2 dimensional reductions calculated: pca, umap
+
+exp3<-readRDS(here("Temp Outputs", "2582.rds"))
+exp3
+
+#An object of class Seurat 
+#32272 features across 11537 samples within 1 assay 
+#Active assay: RNA (32272 features, 1989 variable features)
+# 2 dimensional reductions calculated: pca, umap
+
+exp4<-readRDS(here("Temp Outputs", "2581.rds")) 
+exp4 
+#An object of class Seurat 
+#32272 features across 9248 samples within 1 assay 
+#Active assay: RNA (32272 features, 1995 variable features)
+# 2 dimensional reductions calculated: pca, umap
+
+
+#1	2584	Cre -	Saline	n/a	1	JWN
+#2	2580	Cre +	AngII	n/a	1	JWN
+#3	2583	Cre +	Saline	n/a	1	JME
+#4	2743	Cre -	AngII	n/a	1	JME
+#5	2582	Cre +	Saline	n/a	2	JWN
+#6	2701	Cre -	AngII	n/a	2	JWN
+#7	2744	Cre -	Saline	n/a	2	JME
+#8	2581	Cre +	AngII	n/a	2	JME
+ctrl <- AddMetaData(object = ctrl, metadata = "Saline", col.name = "Treatment")
+ctrl2<- AddMetaData(object=ctrl2, metadata="AngII", col.name="Treatment")
+ctrl3<- AddMetaData(object =ctrl3, metadata = "AngII", col.name="Treatment")
+ctrl4<-AddMetaData(object = ctrl4, metadata= "Saline", col.name= "Treatment")
+
+exp <- AddMetaData(object = exp, metadata = "AngII", col.name = "Treatment")
+exp2<-AddMetaData(object=exp2, metadata="Saline", col.name="Treatment")
+exp3<-AddMetaData(object=exp3, metadata ="Saline", col.name = "Treatment")
+exp4<-AddMetaData(object=exp4, metadata= "AngII", col.name="Treatment")
+
+ctrl <- AddMetaData(object = ctrl, metadata = "2584", col.name = "Sample_ID")
+ctrl2<- AddMetaData(object=ctrl2, metadata="2743", col.name="Sample_ID")
+ctrl3 <- AddMetaData(object = ctrl3, metadata = "2701", col.name = "Sample_ID")
+ctrl4<- AddMetaData(object=ctrl4, metadata="2744", col.name="Sample_ID")
+
+exp <- AddMetaData(object = exp, metadata = "2580", col.name = "Sample_ID")
+exp2<-AddMetaData(object=exp2, metadata="2583", col.name="Sample_ID")
+exp3 <- AddMetaData(object = exp3, metadata = "2582", col.name = "Sample_ID")
+exp4<-AddMetaData(object=exp4, metadata="2581", col.name="Sample_ID")
+
+ctrl <- AddMetaData(object = ctrl, metadata = "First", col.name = "Cohort")
+ctrl2<- AddMetaData(object=ctrl2, metadata="First", col.name="Cohort")
+ctrl3 <- AddMetaData(object = ctrl3, metadata = "Second", col.name = "Cohort")
+ctrl4<- AddMetaData(object=ctrl4, metadata="Second", col.name="Cohort")
+
+exp <- AddMetaData(object = exp, metadata = "First", col.name = "Cohort")
+exp2<-AddMetaData(object=exp2, metadata="First", col.name="Cohort")
+exp3 <- AddMetaData(object = exp3, metadata = "Second", col.name = "Cohort")
+exp4<-AddMetaData(object=exp4, metadata="Second", col.name="Cohort")
+
+ctrl <- AddMetaData(object = ctrl, metadata = "JWN", col.name = "Sample_Processor")
+ctrl2<- AddMetaData(object=ctrl2, metadata="JME", col.name="Sample_Processor")
+ctrl3 <- AddMetaData(object = ctrl3, metadata = "JWN", col.name = "Sample_Processor")
+ctrl4<- AddMetaData(object=ctrl4, metadata="JME", col.name="Sample_Processor")
+
+exp <- AddMetaData(object = exp, metadata = "JWN", col.name = "Sample_Processor")
+exp2<-AddMetaData(object=exp2, metadata="JME", col.name="Sample_Processor")
+exp3 <- AddMetaData(object = exp3, metadata = "JWN", col.name = "Sample_Processor")
+exp4<-AddMetaData(object=exp4, metadata="JME", col.name="Sample_Processor")
+```
+
+### Merge datasets 
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+all_list<-list(ctrl, ctrl2, ctrl3, ctrl4, exp, exp2, exp3, exp4)
+SO_1 <- merge(ctrl, y=c(ctrl2, ctrl3, ctrl4, exp, exp2, exp3, exp4), add.cell.ids = c("ctrl", "ctrl2", "ctrl3", "ctrl4", "exp", "exp2", "exp3", "exp4"), project = "PT ACE2 KO")
+SO_1
+#An object of class Seurat 
+#32272 features across 84530 samples within 1 assay 
+#Active assay: RNA (32272 features, 0 variable features)
+
+SO_1@meta.data <- SO_1@meta.data %>% 
+  mutate(orig.ident = dplyr::case_when(
+    orig.ident == "SeuratProject" ~ "PT ACE2 KO"))
+
+```
+
+### Sanity check
+
+```{r sanity, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+head(colnames(SO_1))
+tail(colnames(SO_1))
+unique(sapply(X = strsplit(colnames(SO_1), split = "_"), FUN = "[", 1))
+table(SO_1$Treatment)
+head(SO_1@meta.data)
+
+VlnPlot(SO_1, 
+        features = c("nCount_RNA", "nFeature_RNA", "percent.mt"),
+        pt.size = 0,
+        group.by = "Treatment")
+
+VlnPlot(SO_1, 
+        features = c("nCount_RNA", "nFeature_RNA", "percent.mt"),
+        pt.size = 0,
+        group.by = "Genotype")
+
+VlnPlot(SO_1, 
+        features = c("nCount_RNA", "nFeature_RNA", "percent.mt"),
+        pt.size = 0,
+        group.by = "Cohort")
+
+VlnPlot(SO_1, 
+        features = c("nCount_RNA", "nFeature_RNA", "percent.mt"),
+        pt.size = 0,
+        group.by = "Sample_Processor")
+
+# Remove all nk/kd files from the environment to save on RAM
+rm(ctrl, exp, ctrl2, exp2, ctrl3, exp3, ctrl4, exp4)
+
+```
+
+### Filter low quality cells
+
+```{r merge, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+SO_1 <- subset(SO_1, subset = nFeature_RNA > 500
+                  & nFeature_RNA < 4000 
+                  & nCount_RNA < 10000) 
+
+VlnPlot(SO_1, 
+        features = c("nCount_RNA", "nFeature_RNA", "percent.mt"),
+        pt.size = 0,
+        group.by = "Treatment")
+
+VlnPlot(SO_1, 
+        features = c("nCount_RNA", "nFeature_RNA", "percent.mt"),
+        pt.size = 0,
+        group.by = "Genotype")
+
+VlnPlot(SO_1, 
+        features = c("nCount_RNA", "nFeature_RNA", "percent.mt"),
+        pt.size = 0,
+        group.by = "Sample_ID")
+
+VlnPlot(SO_1, 
+        features = c("nCount_RNA", "nFeature_RNA", "percent.mt"),
+        pt.size = 0,
+        group.by = "Cohort")
+
+VlnPlot(SO_1, 
+        features = c("nCount_RNA", "nFeature_RNA", "percent.mt"),
+        pt.size = 0,
+        group.by = "Sample_Processor")
+
+SO_1 
+
+# 1987 nuclei were filtered out
+
+#An object of class Seurat 
+#32272 features across 82543 samples within 1 assay 
+#Active assay: RNA (32272 features, 0 variable features)
+
+```
+
+## Normalize and integrate data
+### Normalize data with sctransform
+
+```{r sctransform, echo=T, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', results=F}
+
+#Note that this single command replaces NormalizeData(), ScaleData(), and FindVariableFeatures().
+#https://satijalab.org/seurat/articles/sctransform_vignette.html
+#The latest version of sctransform also supports using glmGamPoi package which substantially improves the speed of the learning procedure. It can be invoked by specifying method="glmGamPoi".
+
+SO_1 <- SCTransform(SO_1, method = "glmGamPoi", vars.to.regress = c("nCount_RNA"), verbose = TRUE)
+
+```
+
+### Principal Component Analysis
+
+```{r pca, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+SO_1 <- RunPCA(SO_1, verbose = TRUE)
+
+ElbowPlot(SO_1, ndims = 50)
+
+#determine percent of variation assocaited with each PC
+pct <- SO_1[["pca"]]@stdev / sum(SO_1[["pca"]]@stdev) * 100
+#Calculate cumulative percents for each PC
+cumu <- cumsum(pct)
+# Determine which PC exhibits cumulative percent greater than 90% and % variation associated with the PC as less than 5
+co1 <- which(cumu > 90 & pct < 5)[1]
+
+co1
+
+# Determine the difference between variation of PC and subsequent PC
+co2 <- sort(which((pct[1:length(pct) - 1] - pct[2:length(pct)]) > 0.1), decreasing = T)[1] + 1
+
+# last point where change of % of variation is more than 0.1%.
+co2
+# Minimum of the two calculation
+pcs <- min(co1, co2)
+
+pcs
+
+# Create a dataframe with values
+plot_df <- data.frame(pct = pct, 
+           cumu = cumu, 
+           rank = 1:length(pct))
+
+# Elbow plot to visualize 
+  ggplot(plot_df, aes(cumu, pct, label = rank, color = rank > pcs)) + 
+  geom_text() + 
+  geom_vline(xintercept = 90, color = "grey") + 
+  geom_hline(yintercept = min(pct[pct > 5]), color = "grey") +
+  theme_bw()
+```
+
+### Integrate data with FindIntegrationAnchors
+
+```{r integration, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', results=F}
+
+#FindIntegrationAnchors post-scTransform. Main Differences --
+
+# - Normalize datasets individually by `SCTransform()`, instead of `NormalizeData()` prior to integration.  
+# - Use 3,000 or more features for analysis downstream of `sctransform`.  
+# - Run the `PrepSCTIntegration()` function prior to identifying anchors.  
+# - When running `FindIntegrationAnchors()`, and `IntegrateData()`, set the normalization.method parameter to the value `SCT`.  
+# - When running sctransform-based workflows, including integration, do not run the `ScaleData()` function.
+
+SO_1.list <- SplitObject(SO_1,
+                              split.by = "Sample_ID")
+
+SO_1.list <- lapply(X = SO_1.list,
+                         FUN = SCTransform)
+
+features <- SelectIntegrationFeatures(object.list = SO_1.list,
+                                      nfeatures = 3000)
+
+SO_1.list <- PrepSCTIntegration(object.list = SO_1.list,
+                                     anchor.features = features)
+saveRDS(SO_1, here("Temp Outputs", "SO_1temp"))
+
+anchors <- FindIntegrationAnchors(object.list = SO_1.list,
+                                  reduction = "rpca",
+                                  normalization.method = "SCT",
+                                  anchor.features = features)
+
+
+
+SO_1 <- IntegrateData(anchorset = anchors,
+                           normalization.method = "SCT")
+rm(anchors, SO_1.list)
+# Default assay automatically changes to “integrated” after 'IntegrateData'
+
+SO_1 <- RunPCA(SO_1, verbose = FALSE)
+
+
+SO_2 <- RunUMAP(object=SO_1, dims = 1:50)
+SO_2 <- RunUMAP(SO_1, dims = 1:50)
+
+SO_2 <- FindNeighbors(SO_2, reduction = "pca", dims = 1:50)
+
+SO <- FindClusters(SO_2, resolution = 1)
+DefaultAssay(SO) <- "SCT"
+
+rm(SO_1, SO_2)
+
+```
+
+### Check batch effects
+
+```{r split, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.height=5, fig.width=16}
+
+f1 <- DimPlot(SO,
+              reduction = "umap",
+              label = TRUE,
+              pt.size = 0,
+              label.size = 6) +
+  NoLegend()
+#check batch effects by treatment 
+
+SO$Treatment <- factor(x = SO$Treatment, levels = c("Veh", "AngII")) 
+f2 <- DimPlot(SO, reduction = "umap", split.by = "Treatment", ncol = 2)
+
+ggdraw() +
+  draw_plot(f1, x = 0, y = 0, width = .4, height = 1) +
+  draw_plot(f2, x = .4, y = 0, width = .6, height = 1)
+
+#check batch effect by sample
+SO$Sample_ID <- factor(x = SO$Sample_ID, levels = c("951", "884", "974","883")) 
+f3 <- DimPlot(SO, reduction = "umap", split.by = "Sample_ID", ncol = 2)
+
+ggdraw() +
+  draw_plot(f1, x = 0, y = 0, width = .4, height = 1) +
+  draw_plot(f3, x = .4, y = 0, width = .6, height = 1)
+
+```
+
+## Verification of Cluster Identity
+
+```{r QC, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.height=5, fig.width=16}
+
+f4 <- VlnPlot(SO, 
+        features = c("nCount_RNA", "nFeature_RNA", "percent.mt"),
+        fill.by = "ident",
+        stack = TRUE, 
+        flip = TRUE,
+        pt.size = 0) +
+  theme(legend.position = "none", 
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(angle = 0, hjust = .5),
+        axis.title.x = element_blank()) +
+  stat_summary(fun = median,
+        geom = "crossbar",
+        width = 0.3,
+        size = 0.2,
+        position = position_dodge(width = 0.5))
+
+ggdraw() +
+  draw_plot(f1, x = 0, y = 0, width = .3, height = 1) +
+  draw_plot(f4, x = .3, y = 0, width = .7, height = 1)
+
+FeaturePlot(SO,
+             features = c("nCount_RNA", "nFeature_RNA", "percent.mt"),
+             cols = c("lightgrey", "royal blue"),
+             ncol = 3)
+
+```
+
+### Identify each cluster
+
+```{r vlnplot, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.height=5, fig.width=16}
+
+markers.to.plot1 <- c(
+                      "Slc5a12",      # PT-S1
+                      "Lrp2",         # PT
+                      "Flt1",         # Endo
+                      "Slc12a1",      # TAL
+                      "Umod",         # TAL, DCT1
+                      "Egf",          # TAL, DCT1
+                      "Pdgfrb",       # Peri
+                      "Slc8a1",       # DCT2, CNT
+                      "Slc12a3",      # DCT
+                      "Pvalb",        # DCT1
+                      "Aqp2",         # PC
+                      "Nphs1",        # Podo
+                      "Slc4a1",       # IC-A
+                      "Slc26a4",      # IC-B
+                      "Ptprc",        # Immune
+                      "Nos1",         # MD
+
+                      "Top2a"        # Proliferation
+                      )
+
+f5 <- VlnPlot(SO, 
+        features = markers.to.plot1,
+        stack = TRUE, 
+        flip = TRUE,
+        pt.size = 0,
+        fill.by = "ident") +
+  theme(legend.position = "none", 
+              plot.title = element_text(hjust = 0.5),
+              axis.text.x = element_text(angle = 0, hjust = .5),
+              axis.title.x = element_blank()) + 
+  stat_summary(fun = median,
+               geom = "crossbar",
+               width = 0.3,
+               size = 0.1,
+               position = position_dodge(width = 0.5))
+
+f5.2 <- DotPlot(SO,
+                features = markers.to.plot1,
+        dot.scale = 8,
+        dot.min = 0,
+        scale.max = 100,
+        scale.min = 0,
+        col.min = -2.5,
+        col.max = 2.5)+
+  coord_flip()
+
+ggdraw() +
+  draw_plot(f1, x = 0, y = 0, width = .3, height = 1) +
+  draw_plot(f5, x = .3, y = 0, width = .7, height = 1)
+
+f5.2
+
+```
+
+### Feature plot
+
+```{r featureplot, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.height = 10, fig.width = 10}
+
+f6 <- FeaturePlot(SO,
+             features = markers.to.plot1,
+             cols = c("lightgrey", "royal blue"),
+             combine = F)
+
+for(i in 1:length(f6)) {
+  f6[[i]] <- f6[[i]] + NoLegend() + NoAxes()
+}
+cowplot::plot_grid(plotlist = f6)
+
+```
+
+### Top five genes in each cluster
+
+```{r top5, echo=TRUE, error=FALSE, fig.align='center', fig.height=28, fig.width=10, message=FALSE, warning=FALSE}
+
+DefaultAssay(SO) <-"RNA"
+
+ALL.markers <- FindAllMarkers(SO, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+saveRDS(ALL.markers, "top5_all.rda")
+
+top5 <- ALL.markers %>% group_by(cluster) %>% top_n(5, avg_log2FC)
+
+top5
+
+```
+
+## Name each cluster based on their identities
+
+```{r rename, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+SO@meta.data <- SO@meta.data %>% mutate(subclass.l2 = dplyr::case_when(
+  seurat_clusters == 0 ~ "PT-S1",
+  seurat_clusters == 1 ~ "EC1",
+  seurat_clusters == 2 ~ "PT-(S2-S3)",
+  seurat_clusters == 3 ~ "PT-S1",
+  seurat_clusters == 4 ~ "PT-S2",
+  seurat_clusters == 5 ~ "TAL",
+  seurat_clusters == 6 ~ "TAL",
+  seurat_clusters == 7 ~ "DCT",
+  seurat_clusters == 8 ~ "Fibroblast",
+  seurat_clusters == 9 ~ "PT-S3",
+  seurat_clusters == 10 ~ "DCT-CNT",
+  seurat_clusters == 11 ~ "EC1",
+  seurat_clusters == 12 ~ "X-a",
+  seurat_clusters == 13 ~ "PT-S2",
+  seurat_clusters == 14 ~ "PC",
+  seurat_clusters == 15 ~ "Podocyte",
+  seurat_clusters == 16 ~ "PC-1",
+  seurat_clusters == 17 ~ "X-b",
+  seurat_clusters == 18 ~ "PC-1",
+  seurat_clusters == 19 ~ "DTL-ATL?",
+  seurat_clusters == 20 ~ "IC-A",
+  seurat_clusters == 21 ~ "Fibroblast",
+  seurat_clusters == 22 ~ "IC-B",
+  seurat_clusters == 23 ~ "Immune-Macrophage",
+  seurat_clusters == 24 ~ "X-c",
+  seurat_clusters == 25 ~ "EC-2",
+  seurat_clusters == 26 ~ "DCT-CNT",
+  seurat_clusters == 27 ~ "Uro",
+  seurat_clusters == 28 ~ "Pericyte",
+  seurat_clusters == 29 ~ "New PT-S2",
+  seurat_clusters == 30 ~ "X-c",
+  seurat_clusters == 31 ~ "PEC",
+  seurat_clusters == 32 ~ "DTL-PEC",
+  seurat_clusters == 33 ~ "X-d",
+  seurat_clusters == 34 ~ "TAL-MD",
+  seurat_clusters == 35 ~ "Pericyte",
+  seurat_clusters == 36 ~ "Fibroblast",
+  seurat_clusters == 37 ~ "TAL, DCT1",
+  seurat_clusters == 38 ~ "PT-S3",
+  seurat_clusters == 39 ~ "X-e",
+  seurat_clusters == 40 ~ "Doublet",
+    ))
+
+#subclas level 1 is the most complex
+#subclass level 1 is a bit broader and also defines doublets based on "co-expression" of two or more genes that don't really go together in nature
+
+SO@meta.data <- SO@meta.data %>% mutate(subclass.l1 = dplyr::case_when(
+ seurat_clusters == 0 ~ "PT-S1",
+  seurat_clusters == 1 ~ "Endo",
+  seurat_clusters == 2 ~ "PT-(S2-S3)",
+  seurat_clusters == 3 ~ "PT-S1",
+  seurat_clusters == 4 ~ "PT-(S2-S3)",
+  seurat_clusters == 5 ~ "TAL",
+  seurat_clusters == 6 ~ "TAL",
+  seurat_clusters == 7 ~ "DCT",
+  seurat_clusters == 8 ~ "Fibroblast",
+  seurat_clusters == 9 ~ "PT-(S2-S3)",
+  seurat_clusters == 10 ~ "DCT-CNT",
+  seurat_clusters == 11 ~ "Endo",
+  seurat_clusters == 12 ~ "X",
+  seurat_clusters == 13 ~ "PT-(S2-S3)",
+  seurat_clusters == 14 ~ "PC",
+  seurat_clusters == 15 ~ "Podocyte",
+  seurat_clusters == 16 ~ "PC",
+  seurat_clusters == 17 ~ "X",
+  seurat_clusters == 18 ~ "PC",
+  seurat_clusters == 19 ~ "Doublet",
+  seurat_clusters == 20 ~ "IC-A",
+  seurat_clusters == 21 ~ "Fibroblast",
+  seurat_clusters == 22 ~ "IC-B",
+  seurat_clusters == 23 ~ "Immune",
+  seurat_clusters == 24 ~ "X",
+  seurat_clusters == 25 ~ "Endo",
+  seurat_clusters == 26 ~ "DCT-CNT",
+  seurat_clusters == 27 ~ "Uro",
+  seurat_clusters == 28 ~ "Pericyte",
+  seurat_clusters == 29 ~ "PT-(S2-S3)",
+  seurat_clusters == 30 ~ "X",
+  seurat_clusters == 31 ~ "PEC",
+  seurat_clusters == 32 ~ "Doublet",
+  seurat_clusters == 33 ~ "X",
+  seurat_clusters == 34 ~ "Macula Densa",
+  seurat_clusters == 35 ~ "Pericyte",
+  seurat_clusters == 36 ~ "Fibroblast",
+  seurat_clusters == 37 ~ "Doublet",
+  seurat_clusters == 38 ~ "PT-(s2-S3)",
+  seurat_clusters == 39 ~ "X",
+  seurat_clusters == 40 ~ "Doublet",
+    ))
+
+#Finally, this is the most broad class which allows you to look at the big picture!
+SO@meta.data <- SO@meta.data %>% mutate(class = dplyr::case_when(
+  seurat_clusters == 0 ~ "PT",
+  seurat_clusters == 1 ~ "Endo",
+  seurat_clusters == 2 ~ "PT",
+  seurat_clusters == 3 ~ "PT",
+  seurat_clusters == 4 ~ "PT",
+  seurat_clusters == 5 ~ "TAL",
+  seurat_clusters == 6 ~ "TAL",
+  seurat_clusters == 7 ~ "DCT",
+  seurat_clusters == 8 ~ "Fibroblast",
+  seurat_clusters == 9 ~ "PT",
+  seurat_clusters == 10 ~ "CNT",
+  seurat_clusters == 11 ~ "Endo",
+  seurat_clusters == 12 ~ "X",
+  seurat_clusters == 13 ~ "PT",
+  seurat_clusters == 14 ~ "PC",
+  seurat_clusters == 15 ~ "Podocyte",
+  seurat_clusters == 16 ~ "PC",
+  seurat_clusters == 17 ~ "X",
+  seurat_clusters == 18 ~ "PC",
+  seurat_clusters == 19 ~ "Doublet",
+  seurat_clusters == 20 ~ "IC-A",
+  seurat_clusters == 21 ~ "Fibroblast",
+  seurat_clusters == 22 ~ "IC-B",
+  seurat_clusters == 23 ~ "Immune",
+  seurat_clusters == 24 ~ "X",
+  seurat_clusters == 25 ~ "Endo",
+  seurat_clusters == 26 ~ "CNT",
+  seurat_clusters == 27 ~ "Uro",
+  seurat_clusters == 28 ~ "Pericyte",
+  seurat_clusters == 29 ~ "PT",
+  seurat_clusters == 30 ~ "X",
+  seurat_clusters == 31 ~ "PEC",
+  seurat_clusters == 32 ~ "Doublet",
+  seurat_clusters == 33 ~ "X",
+  seurat_clusters == 34 ~ "Macula Densa",
+  seurat_clusters == 35 ~ "Pericyte",
+  seurat_clusters == 36 ~ "Fibroblast",
+  seurat_clusters == 37 ~ "Doublet",
+  seurat_clusters == 38 ~ "PT",
+  seurat_clusters == 39 ~ "X",
+  seurat_clusters == 40 ~ "Doublet",
+    ))
+
+saveRDS(SO, here("Temp Outputs", "allcombined.rds"))
+
+SO <- readRDS(here("Temp Outputs", "allcombined.rds"))
+
+```
+
+## Clusters - class
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+head(SO@meta.data)
+
+markers.to.plot2 <- c("Slc5a12", "Lrp2", "Pdgfrb", "Nphs1", "Flt1", "Slc12a1", "Nos1", "Slc12a3", "Slc8a1", "Aqp2", "Slc4a1", "Slc26a4")
+
+jwnlist <- c("Pdgfrb", "Lrp2")
+
+
+levels(Idents(SO))
+
+
+class_levels <- c("PT",	"Endo",	"TAL",	"DCT",	"Fibroblast",	"Macula Densa",	"Podocyte",	"DCT-CNT",	"PC",	"IC-A",	"IC-B", "Immune", "Uro", "PEC", "Pericyte", "Doublet",	"X")
+SO@meta.data$class <- factor(x = SO@meta.data$class, levels = class_levels)
+Idents(SO) <- "class"
+
+DimPlot(SO, 
+        reduction = "umap", 
+        label = TRUE,
+        repel = TRUE,
+        pt.size = 0.5)
+
+VlnPlot(SO, features= "Lrp2")
+SO
+
+
+
+SO2 <- ScaleData(object = SO)
+
+
+pbmc <- NormalizeData(object = pbmc)
+pbmc <- FindVariableFeatures(object = pbmc)
+pbmc <- ScaleData(object = pbmc)
+
+
+DefaultAssay(SO) <-"RNA"
+
+DefaultAssay(SO) <-"integrated"
+
+DefaultAssay(SO) <-"SCT"
+
+Seurat::DotPlot(SO, features = markers.to.plot2)
+
+head(SO@meta.data)
+
+VlnPlot(SO, "Pdgfrb")
+       
+FeaturePlot(SO, features = markers.to.plot2)
+
+
+DefaultAssay(SO) <-"integrated"
+
+Seurat::DotPlot(SO,
+        features = markers.to.plot2,
+        dot.scale = 8,
+        dot.min = 0,
+        scale.max = 100,
+        scale.min = 0,
+        col.min = -2.5,
+        col.max = 2.5) + 
+  theme(axis.title = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = .8),
+        plot.title = element_text(hjust = 0.8)) +
+  coord_flip()
+
+
+Idents(SO)
+
+DotPlot(SO,
+        features =  markers.to.plot2,
+        dot.scale = 8,
+        dot.min = 0,
+        scale.max = 100,
+        scale.min = 0,
+        col.min = -2.5,
+        col.max = 2.5) + 
+  theme(axis.title = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = .8),
+        plot.title = element_text(hjust = 0.8)) +
+  coord_flip()
+
+VlnPlot(SO, 
+        features = c("nCount_RNA", "nFeature_RNA", "percent.mt"),
+        stack = TRUE, 
+        flip = TRUE,
+        pt.size = 0,
+        fill.by = "ident") +
+  theme(legend.position = "none", 
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_blank()) +
+  stat_summary(fun = median,
+        geom = "crossbar",
+        width = 0.3,
+        size = 0.2,
+        position = position_dodge(width = 0.5))
+
+```
+
+## Clusters - subclass level1
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.height=5, fig.width=7}
+Idents(SO) <- "subclass.l1"
+sub.l1_levels <- c("PT-S1",	"PT-S2",	"Pericyte",	"Podocyte",	"Endo",	"TAL-1",	"TAL-2",	"Macula Densa",	"DCT1",	"DCT2",	"CNT-1",	"CNT-2",	"PC",	"IC-A",	"IC-B",	"Doublet",	"X")
+Idents(SO) <- factor(x = Idents(SO), levels = sub.l1_levels)
+
+
+
+DimPlot(SO, 
+        reduction = "umap", 
+        label = TRUE,
+        repel = TRUE,
+        pt.size = 0.5) +
+  ggtitle("Subclass level1")
+
+DotPlot(SO,
+        features = markers.to.plot2,
+        dot.scale = 8,
+        dot.min = 0,
+        scale.max = 100,
+        scale.min = 0,
+        col.min = -2.5,
+        col.max = 2.5) + 
+  theme(axis.title = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(hjust = 0.8)) +
+  coord_flip() +
+  ggtitle("Subclass level1")
+
+VlnPlot(SO, 
+        features = c("nCount_RNA", "nFeature_RNA", "percent.mt"),
+        stack = TRUE, 
+        flip = TRUE,
+        pt.size = 0,
+        fill.by = "ident") +
+  theme(legend.position = "none", 
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_blank()) +
+  stat_summary(fun = median,
+        geom = "crossbar",
+        width = 0.3,
+        size = 0.2,
+        position = position_dodge(width = 0.5))
+
+```
+
+## Clusters - subclass level2
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.height=5, fig.width=10}
+
+Idents(SO) <- "subclass.l2"
+sub.l2_levels <- c("PT-S1-a",	"PT-S1-b",	"PT-S1-c",	"PT-S2-a",	"PT-S2-b",	"PT-S2-c",	"PT-S2-d",	"Pericyte-a",	"Pericyte-b",	"Podocyte",	"Endo-a",	"Endo-b",	"Endo-c",	"TAL-1",	"TAL-2",	"Macula Densa",	"DCT1",	"DCT2",	"CNT-1",	"CNT-2",	"PC",	"IC-A",	"IC-B",	"Peri-CNT",	"PT-Peri",	"PTS1-DCT",	"PTS1-Endo",	"PTS1-TAL",	"Endo-TAL", "Endo-DCT",	"Immune-PT-CNT",	"X-a",	"X-b",	"X-c",	"X-d",	"X-e",	"X-f")
+Idents(SO) <- factor(x = Idents(SO), levels = sub.l2_levels)
+
+DimPlot(SO, 
+        reduction = "umap", 
+        label = TRUE,
+        repel = TRUE,
+        pt.size = 0.5) +
+  ggtitle("Subclass level2")
+```
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.height=5, fig.width=12}
+
+DotPlot(SO,
+        features = markers.to.plot2,
+        dot.scale = 8,
+        dot.min = 0,
+        scale.max = 100,
+        scale.min = 0,
+        col.min = -2.5,
+        col.max = 2.5) + 
+  theme(axis.title = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(hjust = 0.8)) +
+  coord_flip() +
+  ggtitle("Subclass level2")
+
+VlnPlot(SO, 
+        features = c("nCount_RNA", "nFeature_RNA", "percent.mt"),
+        stack = TRUE, 
+        flip = TRUE,
+        pt.size = 0,
+        fill.by = "ident") +
+  theme(legend.position = "none", 
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_blank()) +
+  stat_summary(fun = median,
+        geom = "crossbar",
+        width = 0.3,
+        size = 0.2,
+        position = position_dodge(width = 0.5))
+
+```
+
+## Create a proportion table - class
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.height=4, fig.width=12}
+
+Idents(SO) <- "class"
+Idents(SO) <- factor(x = Idents(SO), levels = class_levels)
+
+t1 <- table(Idents(SO), SO$Treatment)[, c("Veh", "AngII")]
+t1
+
+prop.t1 <- prop.table(t1, margin = 2) 
+prop.t1
+
+t2 <- as.data.frame(t1)
+colnames(t2) <- c('Cell_type', 'Treatment', 'Frequency')
+
+ggplot(t2,
+       aes(fill=Cell_type, x=Frequency, y=Treatment)) + 
+  geom_bar(position="fill", stat = "identity", fun.y = "mean", colour="black") +
+  theme_classic() +
+  theme(legend.position = "bottom")
+
+```
+
+## Create a proportion table - subclass.l1
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.height=4, fig.width=12}
+
+Idents(SO) <- "subclass.l1"
+Idents(SO) <- factor(x = Idents(SO), levels = sub.l1_levels)
+
+t1 <- table(Idents(SO), SO$Treatment)[, c("Veh", "AngII")]
+t1
+
+prop.t1 <- prop.table(t1, margin = 2) 
+prop.t1
+
+t2 <- as.data.frame(t1)
+colnames(t2) <- c('Cell_type', 'Treatment', 'Frequency')
+
+ggplot(t2,
+       aes(fill=Cell_type, x=Frequency, y=Treatment)) + 
+  geom_bar(position="fill", stat = "identity", fun.y = "mean", colour="black") +
+  theme_classic() +
+  theme(legend.position = "bottom")
+
+```
+
+## Create a proportion table - subclass.l2
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.height=4, fig.width=12}
+
+Idents(SO) <- "subclass.l2"
+Idents(SO) <- factor(x = Idents(SO), levels = sub.l2_levels)
+
+t1 <- table(Idents(SO), SO$Treatment)[, c("Veh", "AngII")]
+t1
+
+prop.t1 <- prop.table(t1, margin = 2) 
+prop.t1
+
+t2 <- as.data.frame(t1)
+colnames(t2) <- c('Cell_type', 'Treatment', 'Frequency')
+
+ggplot(t2,
+       aes(fill=Cell_type, x=Frequency, y=Treatment)) + 
+  geom_bar(position="fill", stat = "identity", fun.y = "mean", colour="black") +
+  theme_classic() +
+  theme(legend.position = "bottom")
+
+```
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+sessionInfo()
+```

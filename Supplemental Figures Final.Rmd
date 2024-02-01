@@ -1,0 +1,378 @@
+---
+title: "Supplemental Figures"
+author: "Jackie Emathinger & Jonathan Nelson"
+date: "2023-12-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load libraries & Seurat Object
+
+```{r load new packages, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+
+if (!require("knitr")) {install.packages("knitr"); require("knitr")}
+if (!requireNamespace('BiocManager', quietly = TRUE)) {install.packages('BiocManager'); require("BiocManager")}
+if (!require("dplyr")) {install.packages("dplyr"); require("dplyr")}
+if (!require("tidyverse")) {install.packages("tidyverse"); require("tidyverse")}
+
+
+if (!require("clusterProfiler")) {BiocManager::install('clusterProfiler'); require("clusterProfiler")}
+if (!require("enrichplot")) {BiocManager::install('enrichplot'); require("enrichplot")}
+
+
+if (!require("ggrepel")) {install.packages("ggrepel"); require("ggrepel")}
+if (!require("gghighlight")) {install.packages("gghighlight"); require("gghighlight")}
+if (!require("ggpmisc")) {install.packages("ggpmisc"); require("ggpmisc")}
+if (!require("ggupset")) {install.packages("ggupset"); require("ggupset")}
+if (!require("ggplot2")) {install.packages("ggplot2"); require("ggplot2")}
+if (!require("RColorBrewer")) {install.packages("RColorBrewer"); require("RColorBrewer")}
+
+if (!require("AnnotationHub")) {BiocManager::install('AnnotationHub'); require("AnnotationHub")}
+if (!require("org.Mm.eg.db")) {BiocManager::install('org.Mm.eg.db'); require("org.Mm.eg.db")}
+if (!require("stringr")) {install.packages("stringr"); require("stringr")}
+if (!require("car")) {install.packages("car"); require("car")}
+if (!require("openxlsx")) {install.packages("openxlsx"); require("openxlsx")}
+if (!require("readxl")) {install.packages("readxl"); require("readxl")}
+if (!require("data.table")) {install.packages("data.table"); require("data.table")}
+if (!require("here")) {install.packages("here"); require("here")}
+if (!require("stats")) {install.packages("stats"); require("stats")}
+
+library(stats)
+
+#install.packages("kableExtra") # Install the package
+library(kableExtra)           # Load the package
+
+#install.packages("scCustomize")
+library(scCustomize)
+
+if(!require("magick")) {install.packages("magick",repos = "http://cran.us.r-project.org"); require("magick")}
+if (!require("EnhancedVolcano")) {BiocManager::install('EnhancedVolcano'); require("EnhancedVolcano")} # volcano plot
+
+
+library("Seurat")
+library("ggplot2")
+library("cowplot")
+
+library("stringr")
+here()
+
+SO <- readRDS(here("GSE253448_PTACE2KO.rds"))
+```
+
+
+## Supplemental Figure 2: Cannonical Marker Expression for all Cell Types
+### Supplemental Figure 2A
+
+```{r vlnplot, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.height=6, fig.width=16}
+fS2 <- DimPlot(SO,
+              reduction = "umap",
+              label = TRUE,
+              pt.size = 0,
+              label.size = 6) +
+  NoLegend()
+
+markers.to.plot1 <- c(
+                      "Slc5a12",      # PT-S1
+                      "Slc13a3",      # PT-S2
+                      "Slc16a9",      # PT-S3
+                      "Epha7",        # dTL
+                      "Slc12a1",      # TAL
+                      "Nos1",         # MD
+                      "Slc12a3",      # DCT
+                      "Pvalb",        # DCT1
+                      "Slc8a1",       # DCT2
+                      "Aqp2",         # PC
+                      "Slc4a1",       # IC-A
+                      "Slc26a4",      # IC-B
+                      "Nphs1",        # Podo
+                      "Ncam1",        # PEC
+                      "Flt1",         # Endo
+                      "Pdgfrb",       # Perivascular
+                      "Pdgfra",       # Fib
+                      "Acta2",        # Mural
+                      "Piezo2",       # Mesangial
+                      "Cd74",         # Macrophage
+                      "Skap1",        # B/T Cells 
+                      "Upk1b"         # Uro
+                      )
+
+fS2A <- VlnPlot(SO, 
+        features = markers.to.plot1,
+        stack = TRUE, 
+        flip = TRUE,
+        pt.size = 0,
+        fill.by = "ident") +
+  theme(legend.position = "none", 
+              plot.title = element_text(hjust = 0.5),
+              axis.text.x = element_text(angle = 0, hjust = .5),
+              axis.title.x = element_blank()) +  scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+  stat_summary(fun = median,
+               geom = "crossbar",
+               width = 0.1,
+               size = 0.1,
+               position = position_dodge(width = 0.5))
+fS2A
+
+
+
+
+ggdraw() +
+  draw_plot(fS2, x = 0, y = 0, width = .3, height = 1) +
+  draw_plot(fS2A, x = .3, y = 0, width = .7, height = 1)
+
+
+
+```
+
+### Supplemental Figure 2B
+
+```{r featureplot, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.height = 6, fig.width = 8}
+
+fS2B <- FeaturePlot(SO,
+             features = markers.to.plot1,
+             cols = c("lightgrey", "royal blue"),
+             combine = F)
+
+for(i in 1:length(fS2B)) {
+  fS2B[[i]] <- fS2B[[i]] + NoLegend() + NoAxes()
+}
+cowplot::plot_grid(plotlist = fS2B)
+
+
+```
+
+
+## Supplemental Figure 3: Quality Control of All Nuclei
+### Supplemental Figure 3, A-B
+
+```{r QC, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.height=5, fig.width=12}
+
+fS3A <- VlnPlot(SO, 
+        features = c("nCount_RNA", "nFeature_RNA", "percent.mt"),
+        fill.by = "ident",
+        stack = TRUE, 
+        flip = TRUE,
+        pt.size = 0) +
+  theme(legend.position = "none", 
+        plot.title = element_text(hjust = 0.5), 
+        axis.text.x = element_text(angle = 0, hjust = .5),
+        axis.title.x = element_blank()) +
+  stat_summary(fun = median,
+        geom = "crossbar",
+        width = 0.3,
+        size = 0.2,
+        position = position_dodge(width = 0.5))
+fS3A
+
+
+
+fS3B<- FeaturePlot(SO,
+             features = c("nCount_RNA", "nFeature_RNA", "percent.mt"),
+             cols = c("lightgrey", "royal blue"),
+             ncol = 3)
+fS3B
+```
+## Supplemental Figure 4: Representation of Cell Types Across Experimental Groups
+### Supplemental Figure 4A
+
+```{r exp groups, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.height = 5, fig.width = 16}
+
+f4A <- DimPlot(SO, reduction = "umap", split.by = "Experimental_Groups", ncol = 4)
+
+
+f4A
+
+
+```
+
+### Supplemental Figure 4B
+
+```{r proportions, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.height = 5, fig.width = 5}
+
+t1 <- table(Idents(SO), SO$Experimental_Groups)[, c("Control Saline", "Control AngII", "PT ACE2 KO Saline", "PT ACE2 KO AngII")]
+t1
+
+prop.t1 <- prop.table(t1, margin = 2)
+prop.t1
+
+t2 <- as.data.frame(t1)
+t2
+
+colnames(t2) <- c('Cell_type', 'Rep', 'Cell_number')
+t2
+
+t3 <- t2 %>%
+  pivot_wider(names_from = Cell_type, values_from = Cell_number)
+t3
+
+t4 <- t3 %>% 
+  add_column(Experimental_Groups = c("Control Saline", "Control AngII", "PT ACE2 KO Saline", "PT ACE2 KO AngII"))
+t4
+
+t5 <- t4 %>%
+  pivot_longer(c("PTS1", "PTS2", "PTS3", "dTL", "TAL", "MD", "DCT1", "DCT2", "CNT", "PC", "ICA", "ICB", "Podo", "PEC", "EC", "Fib", "Contractile", "Mes", "Macro", "Lympho", "Uro"), names_to ="Cell_type", values_to = "Cell_number")
+t5
+
+t6 <- t2 %>% 
+  pivot_wider(names_from = Cell_type, values_from = Cell_number) %>%
+  add_column(Experimental_Groups = c("Control Saline", "Control AngII", "PT ACE2 KO Saline", "PT ACE2 KO AngII")) %>%
+  pivot_longer(c("PTS1", "PTS2", "PTS3", "dTL", "TAL", "MD", "DCT1", "DCT2", "CNT", "PC", "ICA", "ICB", "Podo", "PEC", "EC", "Fib", "Contractile", "Mes", "Macro", "Lympho", "Uro"), names_to ="Cell_type", values_to = "Cell_number")
+
+t5 %>%
+  arrange(Cell_number) %>%
+  mutate(Cell_type = factor(Cell_type, levels=c("PTS1", "PTS2", "PTS3", "dTL", "TAL", "MD", "DCT1", "DCT2", "CNT", "PC", "ICA", "ICB", "Podo", "PEC", "EC", "Fib", "Contractile", "Mes", "Macro", "Lympho", "Uro"))) %>%
+ggplot(
+       aes(x=Rep,
+           y=Cell_number,
+           fill=Cell_type)) +     
+  geom_bar(position = "fill",
+           stat = "identity",
+           colour="black") + 
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ggtitle("Distribution of cell types in experimental groups") +
+  theme(plot.title = element_text(hjust = 0)) + 
+  xlab('')+ ylab('')
+
+```
+
+## Supplemental Figure 5A: Enrichment of apical plasma membrane and brush border pathways 
+
+```{r brush border, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, results=T, fig.height = 6, fig.width = 10}
+SO_PT <- subset(SO,  idents = c("PTS1", "PTS2", "PTS3"))
+
+# Significant pathway enrichment for GO:0005903 Brush Border in PT ACE2 KO kidneys
+brush_border<- c("Slc22a12", "Myh10", "Eps8", "Car4", "Aqp1", "Myh14", "Slc11a2", "Lrp2", "Ace2", "Myo1e", "Gna12", "Prom1", "Cltrn", "Enpep", "Lima1", "Abcc2", "Pth1r", "Slc6a19",  "Folr1",  "Shank2", "Slc5a2",  "Amn", "Add3", "Slc34a1", "Slc7a9", "Abcg2",  "Slc2a2",  "Myo1d", "Myo18a", "Slc22a5")
+
+
+brush_border<- list(brush_border)
+brush_border
+
+SO_PT <- AddModuleScore(object = SO_PT, features = brush_border, name = "brush_border")
+
+#Significant pathway enrichment for GO:0016324 Apical Plasma Membrane in PT ACE2 KO groups
+apical_membrane<- c("Slc10a2", "Abcb1b", "Slc22a12", "Nrg1", "Cyp4a12a", "Slc44a4", "Slc39a8", "Pld1", "Abcc4", "Abcc6", "Mpdz", "Car4", "Aqp1", "Nox4", "Cyp4a10", "Shroom3", "Slc11a2", "Itpk1", "Stx3", "Lrp2", "Ace2", "Slc16a2", "Slc2a5", "Slc1a1", "Slc12a2", "Msn", "Dpp4", "Cyp4a14", "Prom1", "Slc22a8", "Enpep", "Abcc2", "Pth1r", "Slc7a8", "Slc13a1", "Atp2b1", "Cyba", "Akap7", "Slc6a19", "Folr1", "Car12", "Shank2", "Slc5a2", "Amn", "Slc17a1", "Pard3b", "Erbb3", "Slc34a1", "Slc7a9", "Shroom4", "Abcg2", "Prkaa2", "Slc2a2", "Ctsb", "Akr1a1", "Ctnnb1", "Slc6a8", "Slc22a5")
+apical_membrane<- list(apical_membrane)
+apical_membrane
+
+
+SO_PT <- AddModuleScore(object = SO_PT, features = apical_membrane, name = "apical_membrane")
+
+
+# Significant pathway enrichment for GO:0031253 cell projection membrane
+cell_projection <- c("Slc22a12", "Eps8", "Sh3yl1", "Car4", "Efcab7", "Aqp1", "Pde6a", "Iqce", "Slc11a2", "Lrp2", "Plekha1", "Ace2", "Gna12", "Bbs7", "Inpp5k", "Msn", "Prom1", "Cltrn", "Enpep", "Lima1",  "Abcc2", "Pth1r", "Slc7a8", "Gabarapl1", "Atp2b1", "Slc6a19",  "Folr1",  "Spata13", "Ptprj", "Shank2", "Appl2", "Slc5a2", "Amn", "Epb41l3", "Cask", "Slc34a1", "Slc7a9", "Abcg2", "Insr", "Slc22a2",  "Myo1d", "Ctnnb1", "Slc22a5")
+cell_projection<- list(cell_projection)
+cell_projection
+
+SO_PT <- AddModuleScore(object = SO_PT, features = cell_projection, name = "cell_projection")
+
+#Significant pathway enrichment for GO:0032956: regulation of actin cytoskeleton organisation
+regulation_actin <- c("Cit", "Fhod3", "Eps8", "Fmn1", "Nrp1", "Fchsd2", "Evl", "Nox4", "Smad3", "Dixdc1", "Serpinf2", "Arhgap18", "Alms1", "Cgnl1", "Inpp5k", "Limch1", "Id1", "Lima1",    "Cotl1",    "Add3",  "Cyfip2", "Baiap2", "Phldb2", "F11r", "Cd2ap", "Arhgap35", "Tsc1")
+regulation_actin<- list(regulation_actin)
+regulation_actin
+
+SO_PT <- AddModuleScore(object = SO_PT, features = regulation_actin, name = "regulation_actin")
+
+
+#Significant pathway enrichment for GO:0098862: cluster of actin-based cell projections
+actin_projection <- c("Slc22a12", "Myh10", "Eps8", "Dcdc2a", "Clic5", "Fchsd2", "Car4", "Aqp1", "Myh14", "Slc11a2", "Lrp2", "Ace2", "Myo1e", "Gna12", "Dock4", "Zswim6", "Prom1", "Cltrn", "Enpep", "Lima1",  "Abcc2", "Pth1r",  "Slc6a19",  "Folr1",  "Shank2", "Slc5a2",  "Amn", "Add3", "Slc34a1", "Slc7a9", "Abcg2",  "Slc2a2", "Myo1d", "Myo18a", "Slc22a5")
+
+actin_projection<- list(actin_projection)
+actin_projection
+
+SO_PT <- AddModuleScore(object = SO_PT, features = actin_projection, name = "actin_projection")
+
+
+#Significant enrichment of GO:0110053: regulation of actin filament organization
+actin_filament<- c("Cit", "Fhod3", "Eps8", "Fmn1", "Nrp1", "Fchsd2", "Evl", "Nox4", "Smad3", "Serpinf2", "Arhgap18", "Alms1", "Cgnl1", "Inpp5k", "Limch1", "Id1", "Lima1",    "Cotl1",  "Add3", "Cyfip2", "Baiap2", "Phldb2", "F11r", "Arhgap35", "Tsc1")
+
+actin_filament<- list(actin_filament)
+actin_filament
+
+SO_PT <- AddModuleScore(object = SO_PT, features = actin_filament, name = "actin_filament")
+
+
+# Create dotplot to visualize the impact of PT ACE2 loss on PT brush border
+
+PT_brushborder<- DotPlot(SO_PT,
+  features = c( "brush_border1", "apical_membrane1", "cell_projection1", "regulation_actin1", "actin_projection1", "actin_filament1"),
+  group.by = "Experimental_Groups",
+  dot.scale = 8,
+  dot.min = 0,
+  scale.max = 100,
+  scale.min = 0,
+  col.min = -2.5,
+    cols = c("dodgerblue", "firebrick1"), 
+  col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip() +
+  scale_x_discrete(labels = c( "brush border", "apical plasma membrane", "cell projection membrane", "regulation of actin cytoskeleton organization", "cluster of actin-based cell projections", "regulation of actin filament organization"))+ 
+  xlab('')+ ylab('')
+
+print(PT_brushborder)
+```
+
+## Supplemental Figure 6: Transcriptional profile of key sodium transporters
+### Supplemental Figure 6A
+
+```{r proximal transporters, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.height = 6, fig.width = 8}
+
+#subset out portions of the nephron that express different transporters
+Proximal <- subset(SO,  idents = c("PTS1", "PTS2", "PTS3", "TAL"))
+
+
+#Create lists of transporter genes within the PT and TAL
+Transporters_PT<- c("Slc9a3", "Slc5a2", "Cldn2", "Aqp1", "Atp1a1", "Atp1b1", "Cldn10")
+
+#Create dotplot of transporters in the PT and TAL
+
+
+f6A<-DotPlot(Proximal,
+  features = Transporters_PT,
+  group.by = "Experimental_Groups",
+  dot.scale = 8,
+  dot.min = 0,
+  scale.max = 75,
+  scale.min = 0,
+  col.min = -2.5,
+ cols = c("grey85", "blue"), 
+  col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + labs(title = "Proximal nephron transporters") + 
+  coord_flip() + 
+  xlab('')+ ylab('')
+
+f6A
+
+```
+
+### Supplemental Figure 6B
+
+```{r distal transporters, echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.height = 6, fig.width = 8}
+#subset out portions of the nephron that express different transporters
+Distal <- subset(SO, idents= c("TAL", "MD", "DCT1", "DCT2", "CNT", "ICA", "ICB", "PC", "Uro"))
+
+#Create lists of transporter genes within the distal nephron
+Transporters_DT <- c("Atp1a1", "Atp1b1", "Slc12a1", "Slc12a3", "Scnn1a", "Scnn1g", "Cldn7", "Cldn8", "Kcnj1", "Aqp2")
+
+#Create dotplot of transporters in the distal nephron
+
+f6B<-DotPlot(Distal,
+  features = Transporters_DT,
+  group.by = "Experimental_Groups",
+  dot.scale = 8,
+  dot.min = 0,
+  scale.max = 75,
+  scale.min = 0,
+  col.min = -2.5,
+ cols = c("grey85", "blue"), 
+  col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + labs(title = "Distal nephron transporters") + 
+  coord_flip() + 
+  xlab('')+ ylab('')
+
+f6B
+```
+
+

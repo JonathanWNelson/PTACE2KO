@@ -1,0 +1,547 @@
+---
+title: "PT ACE2 KO Merge and Integration "
+author: "Jonathan Nelson and Jackie Emathinger"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 4
+    toc_float: 
+      collapsed: true
+      smooth_scroll: true
+    number_sections: false
+    theme: bootstrap
+    df_print: paged
+    code_folding: hide
+    highlight: pygments
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages, echo=T, error=FALSE, message=FALSE, warning=FALSE}
+
+library("dplyr")
+library("Seurat")
+library("knitr")
+library("ggplot2")
+library("BiocManager")
+library("here")
+#BiocManager::install("EnhancedVolcano")
+library("EnhancedVolcano") #volcano plot
+#BiocManager::install('DESeq2') #for DEG
+library("DESeq2")
+library("tidyverse") #tidy up data
+
+if (!require("RColorBrewer")) {install.packages("RColorBrewer"); require("RColorBrewer")} # for color brewer
+if (!require("sctransform")) {install.packages("sctransform"); require("sctransform")} # for data normalization
+if (!require("glmGamPoi")) {BiocManager::install('glmGamPoi'); require("glmGamPoi")} # for data normalization, sctransform
+if (!require("cowplot")) {install.packages("cowplot"); require("cowplot")} # for figure layout
+if (!require("patchwork")) {install.packages("patchwork"); require("patchwork")} # for figure patching
+if (!require("openxlsx")) {install.packages("openxlsx"); require("openxlsx")} # to save .xlsx files
+set.seed(12345)
+here()
+```
+
+# Starting Place
+
+I'm starting with the allcombined object which hasn't been filtered except for nFeatures and nCounts.
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+SO <- readRDS(here("Temp Outputs", "allcombined.rds"))
+
+SO
+
+head(SO@meta.data)
+
+DimPlot(SO) + ggtitle("JME Cluster Identification")
+
+```
+
+# Round 1: Identify and Remove Doublets
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+Idents(SO) <- SO@meta.data$seurat_clusters
+
+DimPlot(SO, label = T) + ggtitle("Res = 1 clusters")
+
+```
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.width = 12, fig.height= 8}
+
+markers.to.plot1 <- c("Lrp2",         # PT
+                      "Slc5a12",      # PT-S1
+                      "Slc13a3",      # PT-S2
+                      "Slc16a9",      # PT-S3
+                      "Havcr1",       # Injured PT
+                      "Epha7",        # dTL
+                      "Cryab",        # dTL
+                      "Cdh13",        # dTL1
+                      "Slc14a2",      # dTL2
+                      "Slc12a1",      # TAL
+                      "Umod",         # TAL, DCT1
+                      "Egf",          # TAL, DCT1,
+                      "Cldn10",       # TAL
+                      "Cldn16",       # TAL
+                      "Nos1",         # MD
+                      "Slc12a3",      # DCT
+                      "Pvalb",        # DCT1
+                      "Slc8a1",       # DCT2, CNT
+                      "Aqp2",         # PC
+                      "Slc4a1",       # IC-A
+                      "Slc26a4",      # IC-B
+                      "Nphs1",        # Podo
+                      "Ncam1",        # PEC
+                      "Flt1",         # Endo
+                      "Emcn",         # Glom Endo
+                      "Kdr",          # Capillary Endo
+                      "Pdgfrb",       # Perivascular
+                      "Pdgfra",       # Fib
+                      "Piezo2",       # Mesangial
+                      "Acta2",        # Mural
+                      "Ptprc",        # Immune
+                      "Cd74",         # Macrophage
+                      "Skap1",        # B/T Cells 
+                      "Upk1b",        # Uro
+                      "Top2a"         # Proliferation
+)
+                      
+DotPlot(SO,
+features = markers.to.plot1,
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip()
+
+```
+
+## Initial Cluster Naming
+
+I found chatGPT really helpful here, editing the code to make it easy to use. 
+
+Step 1: copy and paste the chunck of code below.
+Step 2: "can you extend this code to 51"
+Step 3: "Synthesize with this list" + copy and paste Excel annotations with numbers
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+SO@meta.data <- SO@meta.data %>% mutate(subclass.jwn = dplyr::case_when(
+seurat_clusters == 0 ~ "EC-a",
+seurat_clusters == 1 ~ "PTS2-a",
+seurat_clusters == 2 ~ "PTS2-b",
+seurat_clusters == 3 ~ "PTS1-a",
+seurat_clusters == 4 ~ "PTS3-a",
+seurat_clusters == 5 ~ "TAL-Cldn10",
+seurat_clusters == 6 ~ "PTS1-PTS2",
+seurat_clusters == 7 ~ "DCT1",
+seurat_clusters == 8 ~ "TAL-Cldn16",
+seurat_clusters == 9 ~ "CNT",
+seurat_clusters == 10 ~ "Fib-a",
+seurat_clusters == 11 ~ "PTS1-b",
+seurat_clusters == 12 ~ "PC-a",
+seurat_clusters == 13 ~ "EC-b",
+seurat_clusters == 14 ~ "PTS3-b",
+seurat_clusters == 15 ~ "PC-b",
+seurat_clusters == 16 ~ "IC-A",
+seurat_clusters == 17 ~ "DCT2",
+seurat_clusters == 18 ~ "IC-B",
+seurat_clusters == 19 ~ "Podo",
+seurat_clusters == 20 ~ "EC-c",
+seurat_clusters == 21 ~ "dTL2",
+seurat_clusters == 22 ~ "Immune",
+seurat_clusters == 23 ~ "aTL",
+seurat_clusters == 24 ~ "dTL1-a",
+seurat_clusters == 25 ~ "PT-inj",
+seurat_clusters == 26 ~ "Uro",
+seurat_clusters == 27 ~ "PT-EC",
+seurat_clusters == 28 ~ "dTL1-b",
+seurat_clusters == 29 ~ "Contractile",
+seurat_clusters == 30 ~ "PTS2-c",
+seurat_clusters == 31 ~ "Fib-b",
+seurat_clusters == 32 ~ "PEC",
+seurat_clusters == 33 ~ "MD",
+seurat_clusters == 34 ~ "PT-TAL-a",
+seurat_clusters == 35 ~ "Fib-TAL",
+seurat_clusters == 36 ~ "PC-weak",
+seurat_clusters == 37 ~ "Mes",
+seurat_clusters == 38 ~ "PT-TAL-b",
+seurat_clusters == 39 ~ "PT-TAL-c",
+seurat_clusters == 40 ~ "TAL-PC",
+seurat_clusters == 41 ~ "TAL-DCT",
+seurat_clusters == 42 ~ "X"
+      ))
+
+```
+
+## Compare JME to JWN Cluster Labeling
+
+90% Similar with only minor changes at the end. I think some of the clusters I may have called doublets that JME did not. JME identified Urothelial Cells (great spot, which I missed in my initial naming.
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+selected_columns <- SO@meta.data[, c("seurat_clusters", "subclass.l2", "subclass.jwn")]
+
+unique_rows <- selected_columns %>%
+  distinct(seurat_clusters, .keep_all = TRUE) %>%
+  arrange(seurat_clusters)
+
+unique_rows
+
+```
+
+## Rename Clusters and Filter Out Doublets
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+SO@meta.data <- SO@meta.data %>% mutate(class.jwn = dplyr::case_when(
+seurat_clusters == 0 ~ "EC",
+seurat_clusters == 1 ~ "PTS2",
+seurat_clusters == 2 ~ "PTS2",
+seurat_clusters == 3 ~ "PTS1",
+seurat_clusters == 4 ~ "PTS3",
+seurat_clusters == 5 ~ "TAL",
+seurat_clusters == 6 ~ "PTS1",
+seurat_clusters == 7 ~ "DCT1",
+seurat_clusters == 8 ~ "TAL",
+seurat_clusters == 9 ~ "CNT",
+seurat_clusters == 10 ~ "Fib",
+seurat_clusters == 11 ~ "PTS1",
+seurat_clusters == 12 ~ "PC",
+seurat_clusters == 13 ~ "EC",
+seurat_clusters == 14 ~ "PTS3",
+seurat_clusters == 15 ~ "PC",
+seurat_clusters == 16 ~ "IC-A",
+seurat_clusters == 17 ~ "DCT2",
+seurat_clusters == 18 ~ "IC-B",
+seurat_clusters == 19 ~ "Podo",
+seurat_clusters == 20 ~ "EC",
+seurat_clusters == 21 ~ "dTL",
+seurat_clusters == 22 ~ "Immune",
+seurat_clusters == 23 ~ "dTL",
+seurat_clusters == 24 ~ "aTL",
+seurat_clusters == 25 ~ "PT-inj",
+seurat_clusters == 26 ~ "Uro",
+seurat_clusters == 27 ~ "Doublet",
+seurat_clusters == 28 ~ "dTL",
+seurat_clusters == 29 ~ "Contractile",
+seurat_clusters == 30 ~ "PTS2",
+seurat_clusters == 31 ~ "Fib",
+seurat_clusters == 32 ~ "PEC",
+seurat_clusters == 33 ~ "MD",
+seurat_clusters == 34 ~ "Doublet",
+seurat_clusters == 35 ~ "Doublet",
+seurat_clusters == 36 ~ "Doublet",
+seurat_clusters == 37 ~ "Mes",
+seurat_clusters == 38 ~ "Doublet",
+seurat_clusters == 39 ~ "Doublet",
+seurat_clusters == 40 ~ "Doublet",
+seurat_clusters == 41 ~ "Doublet",
+seurat_clusters == 42 ~ "Doublet"
+   ))
+
+Idents(SO) <- SO@meta.data$class.jwn
+
+DimPlot(SO) + ggtitle("With Doublets")
+
+SO2 <- subset(SO, idents = "Doublet", invert = T)
+
+DimPlot(SO2, label = T) + ggtitle("Doublets Removed")
+
+```
+
+# Round 2: Re-graph and Super-cluster Without Doublets
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+SO2 <- SCTransform(SO2, verbose = F)
+SO2 <- RunPCA(SO2, verbose = F)
+SO2 <- RunUMAP(SO2, dims = 1:30, verbose = F)
+SO2 <- FindNeighbors(SO2, dims = 1:30, verbose = F)
+SO2 <- FindClusters(SO2, resolution = 2, verbose = T)
+
+DimPlot(SO2, label = T, group.by = "class.jwn") + ggtitle("Previous Cluster Labels")
+DimPlot(SO2, label = T) + ggtitle("Super Clustering")
+
+```
+
+## Dotplot to identify cell populations 
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.width = 16, fig.height=10}
+
+DotPlot(SO2,
+features = markers.to.plot1,
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5)+
+coord_flip()
+
+```
+
+## Re-name cell identities
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.height = 10, fig.width = 10}
+
+SO2@meta.data <- SO2@meta.data %>% mutate(subclass.jwn2 = dplyr::case_when(
+seurat_clusters == 0 ~ "TAL-Cldn16",
+seurat_clusters == 1 ~ "EC-a",
+seurat_clusters == 2 ~ "TAL-Cldn10",
+seurat_clusters == 3 ~ "Fib-a",
+seurat_clusters == 4 ~ "PC",
+seurat_clusters == 5 ~ "PTS2-a",
+seurat_clusters == 6 ~ "EC-Cap",
+seurat_clusters == 7 ~ "PTS1-a",
+seurat_clusters == 8 ~ "PTS1-PTS2",
+seurat_clusters == 9 ~ "PTS2-b",
+seurat_clusters == 10 ~ "PTS2-b",
+seurat_clusters == 11 ~ "DCT1",
+seurat_clusters == 12 ~ "PTS1-b",
+seurat_clusters == 13 ~ "PTS3-a",
+seurat_clusters == 14 ~ "PTS2-c",
+seurat_clusters == 15 ~ "PTS1-c",
+seurat_clusters == 16 ~ "TAL-Cldn10",
+seurat_clusters == 17 ~ "EC-Glom",
+seurat_clusters == 18 ~ "PTS2-d",
+seurat_clusters == 19 ~ "DCT1",
+seurat_clusters == 20 ~ "PTS3-b",
+seurat_clusters == 21 ~ "PTS3-c",
+seurat_clusters == 22 ~ "CNT-PC",
+seurat_clusters == 23 ~ "dTL",
+seurat_clusters == 24 ~ "PTS1-d",
+seurat_clusters == 25 ~ "PTS1-e",
+seurat_clusters == 26 ~ "IC-A",
+seurat_clusters == 27 ~ "DCT2",
+seurat_clusters == 28 ~ "IC-B",
+seurat_clusters == 29 ~ "Podo",
+seurat_clusters == 30 ~ "CNT",
+seurat_clusters == 31 ~ "EC-b",
+seurat_clusters == 32 ~ "dTL-a",
+seurat_clusters == 33 ~ "PC-a",
+seurat_clusters == 34 ~ "PEC",
+seurat_clusters == 35 ~ "PC-b",
+seurat_clusters == 36 ~ "CNT",
+seurat_clusters == 37 ~ "Uro",
+seurat_clusters == 38 ~ "Macro",
+seurat_clusters == 39 ~ "PTS3-d",
+seurat_clusters == 40 ~ "Fib-b",
+seurat_clusters == 41 ~ "dTL-c",
+seurat_clusters == 42 ~ "PTS2-d",
+seurat_clusters == 43 ~ "?",
+seurat_clusters == 44 ~ "Contractile",
+seurat_clusters == 45 ~ "EC-c",
+seurat_clusters == 46 ~ "MD",
+seurat_clusters == 47 ~ "PT-TAL",
+seurat_clusters == 48 ~ "Mes",
+seurat_clusters == 49 ~ "B & T",
+seurat_clusters == 50 ~ "PT-EC",
+seurat_clusters == 51 ~ "TAL-EC"
+))
+
+DimPlot(SO2, group.by = "subclass.jwn2", label = T) + ggtitle("subclass.jwn2 labels")
+
+SO2@meta.data <- SO2@meta.data %>% mutate(class.jwn2 = dplyr::case_when(
+seurat_clusters == 0 ~ "TAL",
+seurat_clusters == 1 ~ "EC",
+seurat_clusters == 2 ~ "TAL",
+seurat_clusters == 3 ~ "Fib",
+seurat_clusters == 4 ~ "PC",
+seurat_clusters == 5 ~ "PTS2",
+seurat_clusters == 6 ~ "EC",
+seurat_clusters == 7 ~ "PTS1",
+seurat_clusters == 8 ~ "PTS1",
+seurat_clusters == 9 ~ "PTS2",
+seurat_clusters == 10 ~ "PTS2",
+seurat_clusters == 11 ~ "DCT1",
+seurat_clusters == 12 ~ "PTS1",
+seurat_clusters == 13 ~ "PTS3",
+seurat_clusters == 14 ~ "PTS2",
+seurat_clusters == 15 ~ "PTS1",
+seurat_clusters == 16 ~ "TAL",
+seurat_clusters == 17 ~ "EC",
+seurat_clusters == 18 ~ "PTS2",
+seurat_clusters == 19 ~ "DCT1",
+seurat_clusters == 20 ~ "PTS3",
+seurat_clusters == 21 ~ "PTS3",
+seurat_clusters == 22 ~ "CNT",
+seurat_clusters == 23 ~ "dTL",
+seurat_clusters == 24 ~ "PTS1",
+seurat_clusters == 25 ~ "PTS1",
+seurat_clusters == 26 ~ "ICA",
+seurat_clusters == 27 ~ "DCT2",
+seurat_clusters == 28 ~ "ICB",
+seurat_clusters == 29 ~ "Podo",
+seurat_clusters == 30 ~ "CNT",
+seurat_clusters == 31 ~ "EC",
+seurat_clusters == 32 ~ "dTL",
+seurat_clusters == 33 ~ "PC",
+seurat_clusters == 34 ~ "PEC",
+seurat_clusters == 35 ~ "PC",
+seurat_clusters == 36 ~ "CNT",
+seurat_clusters == 37 ~ "Uro",
+seurat_clusters == 38 ~ "Macro",
+seurat_clusters == 39 ~ "PTS3",
+seurat_clusters == 40 ~ "Fib",
+seurat_clusters == 41 ~ "dTL",
+seurat_clusters == 42 ~ "PTS2",
+seurat_clusters == 43 ~ "EC",
+seurat_clusters == 44 ~ "Contractile",
+seurat_clusters == 45 ~ "EC",
+seurat_clusters == 46 ~ "MD",
+seurat_clusters == 47 ~ "Doublet",
+seurat_clusters == 48 ~ "Mes",
+seurat_clusters == 49 ~ "Lympho",
+seurat_clusters == 50 ~ "Doublet",
+seurat_clusters == 51 ~ "Doublet"
+))
+
+DimPlot(SO2, group.by = "class.jwn2", label = T) + ggtitle("class.jwn labels")
+
+SO2@meta.data$class.jwn2 <- factor(SO2@meta.data$class.jwn2, levels = c("PTS1", "PTS2", "PTS3", "dTL", "TAL", "MD", "DCT1", "DCT2", "CNT", "PC", "ICA", "ICB", "Podo", "PEC", "EC", "Fib", "Contractile", "Mes", "Macro", "Lympho", "Uro", "Doublet"))
+
+Idents(SO2) <- SO2@meta.data$class.jwn2
+
+SO3 <- subset(SO2, idents = "Doublet", invert = T)
+
+DimPlot(SO3, group.by = "class.jwn2") + ggtitle("After Cluster Leveling")
+
+```
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.width = 14, fig.height = 10}
+
+DotPlot(SO3,
+features = markers.to.plot1,
+group.by = "class.jwn2",
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5)+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip()
+
+markers.to.plot.clean <- c(
+                      "Slc5a12",      # PT-S1
+                      "Slc13a3",      # PT-S2
+                      "Slc16a9",      # PT-S3
+                      "Epha7",        # dTL
+                      "Slc12a1",      # TAL
+                      "Nos1",         # MD
+                      "Slc12a3",      # DCT
+                      "Pvalb",        # DCT1
+                      "Slc8a1",       # DCT2
+                      "Aqp2",         # PC
+                      "Slc4a1",       # IC-A
+                      "Slc26a4",      # IC-B
+                      "Nphs1",        # Podo
+                      "Ncam1",        # PEC
+                      "Flt1",         # Endo
+                      "Pdgfrb",       # Perivascular
+                      "Pdgfra",       # Fib
+                      "Acta2",        # Mural
+                      "Piezo2",       # Mesangial
+                      "Cd74",         # Macrophage
+                      "Skap1",        # B/T Cells 
+                      "Upk1b"         # Uro
+                      )
+
+DotPlot(SO3,
+features = markers.to.plot.clean,
+group.by = "class.jwn2",
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip()
+
+```
+
+# Final DimPlot and DotPlot
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.height = 10, fig.width = 10}
+
+DimPlot(SO3, group.by = "class.jwn2", label = T) + ggtitle("Final Clustering")
+
+DimPlot(SO3, group.by = "class.jwn2") + ggtitle("Final Clustering")
+
+```
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.width = 14, fig.height = 10}
+
+DotPlot(SO3,
+features = markers.to.plot.clean,
+group.by = "class.jwn2",
+dot.scale = 8,
+dot.min = 0,
+scale.max = 100,
+scale.min = 0,
+col.min = -2.5,
+col.max = 2.5)+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  coord_flip()
+```
+
+## Change Metadata labels
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center', fig.width = 14, fig.height = 10}
+
+
+#SO2 <- readRDS(here("Temp Outputs", "SO_jwn090623.rds"))
+
+SO3@meta.data$Genotype_Treatment <- paste0(SO3@meta.data$Genotype, "_", SO3@meta.data$Treatment)
+DimPlot(SO3, reduction = "umap", group.by= "Genotype_Treatment")
+
+# Re-order groups
+Genotype_Treatment_levels <- c("Cre -_Saline",  "Cre +_Saline", "Cre -_AngII", "Cre +_AngII")
+SO3@meta.data$Genotype_Treatment <- factor(x = SO3@meta.data$Genotype_Treatment, levels = Genotype_Treatment_levels)
+DimPlot(SO3, reduction = "umap", group.by="Genotype_Treatment")
+
+SO3@meta.data <- SO3@meta.data %>% mutate(Experimental_Groups = dplyr::case_when(
+Genotype_Treatment == "Cre -_Saline" ~ "Control Saline",
+Genotype_Treatment == "Cre +_Saline" ~ "PT ACE2 KO Saline",
+Genotype_Treatment == "Cre -_AngII" ~ "Control AngII",
+Genotype_Treatment == "Cre +_AngII" ~ "PT ACE2 KO AngII",
+))
+
+Experimental_Groups_levels <- c("Control Saline",  "PT ACE2 KO Saline", "Control AngII", "PT ACE2 KO AngII")
+SO3@meta.data$Experimental_Groups <- factor(x = SO3@meta.data$Experimental_Groups, levels = Experimental_Groups_levels)
+
+DimPlot(SO3, reduction = "umap", group.by="Experimental_Groups")
+
+## Labeling Convention Asked for by JME
+## Cre- = Control
+## Cre+ = PT ACE2 KO
+## PT ACE2 KO Saline
+
+```
+
+
+# Save Object
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+saveRDS(SO3, here("Temp Outputs", "SO_jwn101823.rds"))
+
+```
+
+# Session Info
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+sessionInfo()
+
+```

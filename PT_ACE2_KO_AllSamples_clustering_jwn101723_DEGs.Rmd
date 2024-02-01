@@ -1,0 +1,662 @@
+---
+title: "PT ACE2 KO snRNAseq DEG Quantification"
+author: "Jonathan Nelson"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: yes
+    toc_depth: 4
+    toc_float: 
+      collapsed: true
+      smooth_scroll: true
+    number_sections: false
+    theme: bootstrap
+    df_print: paged
+    code_folding: hide
+    highlight: pygments
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages, echo=T, error=FALSE, message=FALSE, warning=FALSE}
+
+if (!require("knitr")) {install.packages("knitr"); require("knitr")}
+if (!requireNamespace('BiocManager', quietly = TRUE)) {install.packages('BiocManager'); require("BiocManager")}
+if (!require("dplyr")) {install.packages("dplyr"); require("dplyr")}
+if (!require("stringr")) {install.packages("stringr"); require("stringr")}
+if (!require("Seurat")) {install.packages("Seurat"); require("Seurat")}
+if (!require("sctransform")) {install.packages("sctransform"); require("sctransform")}
+if (!require("glmGamPoi")) {BiocManager::install('glmGamPoi'); require("glmGamPoi")}
+if (!require("patchwork")) {install.packages("patchwork"); require("patchwork")}
+if (!require("ggplot2")) {install.packages("ggplot2"); require("ggplot2")}
+if (!require("EnhancedVolcano")) {BiocManager::install('EnhancedVolcano'); require("EnhancedVolcano")}
+if (!require("DESeq2")) {BiocManager::install('DESeq2'); require("DESeq2")}
+if (!require("tidyverse")) {install.packages("tidyverse"); require("tidyverse")}
+if (!require("RColorBrewer")) {install.packages("RColorBrewer"); require("RColorBrewer")}
+if (!require("car")) {install.packages("car"); require("car")}
+if (!require("openxlsx")) {install.packages("openxlsx"); require("openxlsx")}
+if (!require("readxl")) {install.packages("readxl"); require("readxl")}
+if (!require("ggrepel")) {install.packages("ggrepel"); require("ggrepel")}
+if (!require("gghighlight")) {install.packages("gghighlight"); require("gghighlight")}
+if (!require("ggpmisc")) {install.packages("ggpmisc"); require("ggpmisc")}
+if (!require("data.table")) {install.packages("data.table"); require("data.table")}
+if (!require("here")) {install.packages("here"); require("here")}
+set.seed(12345)
+here()
+```
+
+# Starting Place
+
+I'm starting with the allcombined object which hasn't been filtered except for nFeatures and nCounts.
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+SO <- readRDS(here("Temp Outputs", "SO_jwn101823.rds"))
+
+SO
+
+head(SO@meta.data)
+
+DimPlot(SO, group.by = "class.jwn2") + ggtitle("JWN Cluster Identification")
+
+DimPlot(SO, group.by = "Experimental_Groups") + ggtitle("Experimental Groups")
+
+```
+
+# Creating DEG Lists
+
+Creating DEG lists ans saving them as .Rdata files and .xlsx files
+
+*Data Dictionary* 
+
+A: Control Saline vs. Control AngII DEGs (ConSal_v_ConAngII)
+B: Control Saline vs. PT ACE2 KO Saline DEGs (ConSal_v_KOSal)
+C: PT ACE2 KO Saline vs. PT ACE2 KO AngII DEGs (KOSal_v_KOAngII)
+D: Control AngII vs. PT ACE2 AngII DEGs (ConAngII_v_KOAngII)
+
+## Control Saline vs. Control AngII DEGs
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+SO <- readRDS(here("Temp Outputs", "SO_jwn101823.rds"))
+
+# Create a list of all the cluster names in the Seurat Object
+
+clusters <- unique(SO@meta.data$class.jwn2)
+names(clusters) <- clusters
+
+SO <- PrepSCTFindMarkers(SO)
+DEG.env <- new.env()
+
+# Create a forloop that cycles through clusters to find DEGS between AngII and Saline Treatment
+
+for (i in clusters) {
+DEGs <- FindMarkers(SO, ident.1 = "Control AngII", ident.2 = "Control Saline", group.by = "Experimental_Groups", subset.ident = i)
+DEGs <- DEGs %>% rownames_to_column("gene") %>% filter(p_val_adj < .05)
+DEGs <- DEGs[order(DEGs[,"avg_log2FC"], decreasing = TRUE),]
+assign(paste0(names(clusters[i]), "_A"), DEGs, envir = DEG.env)
+}
+
+list_objects <- ls(DEG.env)
+save(list = list_objects, file = here("ConSal_v_ConAngII_DEGs.Rdata"), envir = DEG.env)
+
+allobj <- ls(DEG.env)
+alldf <- sapply(allobj, get, simplify = FALSE, envir = DEG.env)
+alldf <- alldf[sapply(alldf, inherits, "data.frame")]
+custom_order <- c("PTS1", "PTS2", "PTS3", "dTL", "TAL", "MD", "DCT1", "DCT2", "CNT", "PC", "ICA", "ICB", "Podo", "PEC", "EC", "Fib", "Contractile", "Mes", "Macro", "Lympho", "Uro")
+custom_order <- paste0(custom_order, "_A")
+alldf <- alldf[match(custom_order, names(alldf))]
+
+write.xlsx(alldf, sheetName = names(alldf), file = here("ConSal_v_ConAngII_DEGs.xlsx"))
+
+#remove all objects from the DEG.env
+
+rm(list = ls(DEG.env), envir = DEG.env)
+
+# create a list of the first name in the column gene from the dta frame alldf for each dataframe
+
+gene_list <- lapply(alldf, function(x) x[1,1])
+
+VlnPlot(SO, features = "Itpr2", group.by = "Experimental_Groups", idents = "PTS1") +
+  ggtitle("Control Saline vs. Control AngII Itpr2")
+
+VlnPlot(SO, features = "Itpr2", group.by = "Experimental_Groups", split.by = "Sample_ID", idents = "PTS1") + 
+  ggtitle("Control Saline vs. Control AngII Itpr2")
+
+```
+
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+rm(list = ls())
+
+load(here("ConSal_v_ConAngII_DEGs.RData"))
+
+# Remove the "_A" suffix from each of the objects in the environment
+
+# List the objects in the environment
+  objects_in_environment <- ls()
+
+# Filter the objects with the "_A" suffix
+objects_to_rename <- grep("_A$", objects_in_environment, value = TRUE)
+
+# Rename each object by removing the "_A" suffix
+for (object in objects_to_rename) {
+  new_name <- sub("_A$", "", object)
+  assign(new_name, get(object))
+  rm(list = object)
+}
+
+# Clean up by removing objects_to_rename
+rm(objects_to_rename)
+
+data_frames <- Filter(is.data.frame, mget(ls()))
+
+# Initialize an empty data frame to store the results
+output_table <- data.frame(Data_Frame = character(),
+                           Number_of_Obs = numeric(),
+                           Number_of_Positive_Log2FC = numeric(),
+                           Number_of_Negative_Log2FC = numeric(),
+                           stringsAsFactors = FALSE)
+
+# Loop through each data frame
+for (df_name in names(data_frames)) {
+  df <- data_frames[[df_name]]
+  
+  # Get the number of observations in the data frame
+  num_obs <- nrow(df)
+  
+  # Count the number of observations with positive log2FC
+  positive_count <- sum(df$avg_log2FC > 0)
+  
+  # Count the number of observations with negative log2FC
+  negative_count <- sum(df$avg_log2FC < 0)
+  
+  # Create a row in the output table
+  output_row <- data.frame(Data_Frame = df_name,
+                           Number_of_Obs = num_obs,
+                           Number_of_Positive_Log2FC = positive_count,
+                           Number_of_Negative_Log2FC = negative_count,
+                           stringsAsFactors = FALSE)
+  
+  # Append the row to the output table
+  output_table <- rbind(output_table, output_row)
+}
+
+# Print the output table
+print(output_table)
+
+# Measure the total number of DEGs (sum of output_table$Number_of_Obs)
+v1 <-sum(output_table$Number_of_Obs)
+print("Total Number of DEGs")
+print(v1)
+
+output_table2 <- output_table %>% 
+                 mutate(Data_Frame = sub(".*\\.", "", Data_Frame)) %>%
+                 arrange(desc(Number_of_Obs)) %>%
+                 mutate(Data_Frame = factor(Data_Frame, levels = unique(Data_Frame)))
+
+p1 <- ggplot(output_table2, aes(x = Data_Frame)) +
+  geom_bar(aes(y = Number_of_Positive_Log2FC), stat = "identity", fill = "coral2") +
+  geom_bar(aes(y = -Number_of_Negative_Log2FC), stat = "identity", fill = "dodgerblue2") +
+  labs(x = "Cell Type", y = "Number of DEGs") +
+  ggtitle("Control Saline vs. Control AngII DEGs") +
+  scale_y_continuous(labels = function(x) abs(x)) +
+  annotate("text", x = Inf, y = Inf, label = "Positive Log2FC", color = "coral2",
+           hjust = 1, vjust = 1, size = 8) +
+  annotate("text", x = Inf, y = Inf, label = "Negative Log2FC", color = "dodgerblue2",
+           hjust = 1, vjust = 2.1, size = 8) +
+  theme_minimal() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(hjust = 0.5, size = 24),
+        axis.text = element_text(color = "black", size = 14,),
+        axis.text.x = element_text(color = "black", size = 14, angle = 45, hjust = 1, vjust = 1),
+        axis.title = element_text(color = "black", size = 20,))
+
+p1
+
+rm(list = ls())
+
+```
+
+## Control Saline vs. PT ACE2 KO Saline DEGs
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+SO <- readRDS(here("Temp Outputs", "SO_jwn101823.rds"))
+
+# Create a list of all the cluster names in the Seurat Object
+
+clusters <- unique(SO@meta.data$class.jwn2)
+names(clusters) <- clusters
+
+SO <- PrepSCTFindMarkers(SO)
+DEG.env <- new.env()
+
+# Create a forloop that cycles through clusters to find DEGS between AngII and Saline Treatment
+
+for (i in clusters) {
+DEGs <- FindMarkers(SO, ident.1 = "PT ACE2 KO Saline", ident.2 = "Control Saline", group.by = "Experimental_Groups", subset.ident = i)
+DEGs <- DEGs %>% rownames_to_column("gene") %>% filter(p_val_adj < .05)
+DEGs <- DEGs[order(DEGs[,"avg_log2FC"], decreasing = TRUE),]
+assign(paste0(names(clusters[i]), "_B"), DEGs, envir = DEG.env)
+}
+
+list_objects <- ls(DEG.env)
+save(list = list_objects, file = here("ConSal_v_KOSal_DEGs.RData"), envir = DEG.env)
+
+allobj <- ls(DEG.env)
+alldf <- sapply(allobj, get, simplify = FALSE, envir = DEG.env)
+alldf <- alldf[sapply(alldf, inherits, "data.frame")]
+custom_order <- c("PTS1", "PTS2", "PTS3", "dTL", "TAL", "MD", "DCT1", "DCT2", "CNT", "PC", "ICA", "ICB", "Podo", "PEC", "EC", "Fib", "Contractile", "Mes", "Macro", "Lympho", "Uro")
+custom_order <- paste0(custom_order, "_B")
+alldf <- alldf[match(custom_order, names(alldf))]
+
+write.xlsx(alldf, sheetName = names(alldf), file = here("ConSal_v_KOSal_DEGs.xlsx"))
+
+#remove all objects from the DEG.env
+
+rm(list = ls(DEG.env), envir = DEG.env)
+
+VlnPlot(SO, features = "Fkbp5", group.by = "Experimental_Groups", idents = "PTS1") + 
+  ggtitle("PT ACE2 KO Saline vs. Control Saline Fkbp5")
+
+VlnPlot(SO, features = "Fkbp5", group.by = "Experimental_Groups", split.by = "Sample_ID", idents = "PTS1") + ggtitle("PT ACE2 KO Saline vs. Control Saline Fkbp5")
+
+
+
+```
+
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+rm(list = ls())
+
+load(here("ConSal_v_KOSal_DEGs.RData"))
+
+# Remove the "_B" suffix from each of the objects in the environment
+
+# List the objects in the environment
+objects_in_environment <- ls()
+
+# Filter the objects with the "_B" suffix
+objects_to_rename <- grep("_B$", objects_in_environment, value = TRUE)
+
+# Rename each object by removing the "_B" suffix
+for (object in objects_to_rename) {
+  new_name <- sub("_B$", "", object)
+  assign(new_name, get(object))
+  rm(list = object)
+}
+
+# Clean up by removing objects_to_rename
+rm(objects_to_rename)
+
+
+data_frames <- Filter(is.data.frame, mget(ls()))
+
+# Initialize an empty data frame to store the results
+output_table <- data.frame(Data_Frame = character(),
+                           Number_of_Obs = numeric(),
+                           Number_of_Positive_Log2FC = numeric(),
+                           Number_of_Negative_Log2FC = numeric(),
+                           stringsAsFactors = FALSE)
+
+# Loop through each data frame
+for (df_name in names(data_frames)) {
+  df <- data_frames[[df_name]]
+  
+  # Get the number of observations in the data frame
+  num_obs <- nrow(df)
+  
+  # Count the number of observations with positive log2FC
+  positive_count <- sum(df$avg_log2FC > 0)
+  
+  # Count the number of observations with negative log2FC
+  negative_count <- sum(df$avg_log2FC < 0)
+  
+  # Create a row in the output table
+  output_row <- data.frame(Data_Frame = df_name,
+                           Number_of_Obs = num_obs,
+                           Number_of_Positive_Log2FC = positive_count,
+                           Number_of_Negative_Log2FC = negative_count,
+                           stringsAsFactors = FALSE)
+  
+  # Append the row to the output table
+  output_table <- rbind(output_table, output_row)
+}
+
+# Print the output table
+print(output_table)
+
+# Measure the total number of DEGs (sum of output_table$Number_of_Obs)
+v2 <-sum(output_table$Number_of_Obs)
+print("Total Number of DEGs")
+print(v2)
+
+output_table2 <- output_table %>% 
+                 mutate(Data_Frame = sub(".*\\.", "", Data_Frame)) %>%
+                 arrange(desc(Number_of_Obs)) %>%
+                 mutate(Data_Frame = factor(Data_Frame, levels = unique(Data_Frame)))
+
+p2 <- ggplot(output_table2, aes(x = Data_Frame)) +
+  geom_bar(aes(y = Number_of_Positive_Log2FC), stat = "identity", fill = "coral2") +
+  geom_bar(aes(y = -Number_of_Negative_Log2FC), stat = "identity", fill = "dodgerblue2") +
+  labs(x = "Cell Type", y = "Number of DEGs") +
+  ggtitle("Control Saline vs. PT ACE2 KO DEGs") +
+  scale_y_continuous(labels = function(x) abs(x)) +
+  annotate("text", x = Inf, y = Inf, label = "Positive Log2FC", color = "coral2",
+           hjust = 1, vjust = 1, size = 8) +
+  annotate("text", x = Inf, y = Inf, label = "Negative Log2FC", color = "dodgerblue2",
+           hjust = 1, vjust = 2.1, size = 8) +
+  theme_minimal() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(hjust = 0.5, size = 24),
+        axis.text = element_text(color = "black", size = 14,),
+        axis.text.x = element_text(color = "black", size = 14, angle = 45, hjust = 1, vjust = 1),
+        axis.title = element_text(color = "black", size = 20,))
+
+p2
+
+rm(list = ls())
+
+```
+
+
+## PT ACE2 KO Saline vs. PT ACE2 KO AngII DEGs
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+SO <- readRDS(here("Temp Outputs", "SO_jwn101823.rds"))
+
+# Create a list of all the cluster names in the Seurat Object
+
+clusters <- unique(SO@meta.data$class.jwn2)
+names(clusters) <- clusters
+
+SO <- PrepSCTFindMarkers(SO)
+DEG.env <- new.env()
+
+# Create a forloop that cycles through clusters to find DEGS between AngII and Saline Treatment
+
+for (i in clusters) {
+DEGs <- FindMarkers(SO, ident.1 = "PT ACE2 KO AngII", ident.2 = "PT ACE2 KO Saline", group.by = "Experimental_Groups", subset.ident = i)
+DEGs <- DEGs %>% rownames_to_column("gene") %>% filter(p_val_adj < .05)
+DEGs <- DEGs[order(DEGs[,"avg_log2FC"], decreasing = TRUE),]
+assign(paste0(names(clusters[i]), "_C"), DEGs, envir = DEG.env)
+}
+
+list_objects <- ls(DEG.env)
+save(list = list_objects, file = here("KOSal_v_KOAngII_DEGs.RData"), envir = DEG.env)
+
+allobj <- ls(DEG.env)
+alldf <- sapply(allobj, get, simplify = FALSE, envir = DEG.env)
+alldf <- alldf[sapply(alldf, inherits, "data.frame")]
+custom_order <- c("PTS1", "PTS2", "PTS3", "dTL", "TAL", "MD", "DCT1", "DCT2", "CNT", "PC", "ICA", "ICB", "Podo", "PEC", "EC", "Fib", "Contractile", "Mes", "Macro", "Lympho", "Uro")
+custom_order <- paste0(custom_order, "_C")
+alldf <- alldf[match(custom_order, names(alldf))]
+
+write.xlsx(alldf, sheetName = names(alldf), file = here("KOSal_v_KOAngII_DEGs.xlsx"))
+
+#remove all objects from the DEG.env
+
+rm(list = ls(DEG.env), envir = DEG.env)
+
+VlnPlot(SO, features = "Dab2", group.by = "Experimental_Groups", idents = "PTS1") +
+  ggtitle(" PT ACE2 KO Saline vs. PT ACE2 KO AngII Dab2")
+
+
+VlnPlot(SO, features = "Dab2", group.by = "Experimental_Groups", split.by = "Sample_ID", idents = "PTS1") +          ggtitle("PT ACE2 KO Saline vs. PT ACE2 KO AngII Dab2")
+
+```
+
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+rm(list = ls())
+
+load(here("KOSal_v_KOAngII_DEGs.RData"))
+
+# Remove the "_C" suffix from each of the objects in the environment
+
+# List the objects in the environment
+objects_in_environment <- ls()
+
+# Filter the objects with the "_C" suffix
+objects_to_rename <- grep("_C$", objects_in_environment, value = TRUE)
+
+# Rename each object by removing the "_C" suffix
+for (object in objects_to_rename) {
+  new_name <- sub("_C$", "", object)
+  assign(new_name, get(object))
+  rm(list = object)
+}
+
+# Clean up by removing objects_to_rename
+rm(objects_to_rename)
+
+
+data_frames <- Filter(is.data.frame, mget(ls()))
+
+# Initialize an empty data frame to store the results
+output_table <- data.frame(Data_Frame = character(),
+                           Number_of_Obs = numeric(),
+                           Number_of_Positive_Log2FC = numeric(),
+                           Number_of_Negative_Log2FC = numeric(),
+                           stringsAsFactors = FALSE)
+
+# Loop through each data frame
+for (df_name in names(data_frames)) {
+  df <- data_frames[[df_name]]
+  
+  # Get the number of observations in the data frame
+  num_obs <- nrow(df)
+  
+  # Count the number of observations with positive log2FC
+  positive_count <- sum(df$avg_log2FC > 0)
+  
+  # Count the number of observations with negative log2FC
+  negative_count <- sum(df$avg_log2FC < 0)
+  
+  # Create a row in the output table
+  output_row <- data.frame(Data_Frame = df_name,
+                           Number_of_Obs = num_obs,
+                           Number_of_Positive_Log2FC = positive_count,
+                           Number_of_Negative_Log2FC = negative_count,
+                           stringsAsFactors = FALSE)
+  
+  # Append the row to the output table
+  output_table <- rbind(output_table, output_row)
+}
+
+# Measure the total number of DEGs (sum of output_table$Number_of_Obs)
+v3 <-sum(output_table$Number_of_Obs)
+print("Total Number of DEGs")
+print(v3)
+
+
+# Print the output table
+print(output_table)
+
+output_table2 <- output_table %>% 
+                 mutate(Data_Frame = sub(".*\\.", "", Data_Frame)) %>%
+                 arrange(desc(Number_of_Obs)) %>%
+                 mutate(Data_Frame = factor(Data_Frame, levels = unique(Data_Frame)))
+
+p3 <- ggplot(output_table2, aes(x = Data_Frame)) +
+  geom_bar(aes(y = Number_of_Positive_Log2FC), stat = "identity", fill = "coral2") +
+  geom_bar(aes(y = -Number_of_Negative_Log2FC), stat = "identity", fill = "dodgerblue2") +
+  labs(x = "Cell Type", y = "Number of DEGs") +
+  ggtitle("PT ACE2 KO Saline vs. PT ACE2 KO AngII DEGs") +
+  scale_y_continuous(labels = function(x) abs(x)) +
+  annotate("text", x = Inf, y = Inf, label = "Positive Log2FC", color = "coral2",
+           hjust = 1, vjust = 1, size = 8) +
+  annotate("text", x = Inf, y = Inf, label = "Negative Log2FC", color = "dodgerblue2",
+           hjust = 1, vjust = 2.1, size = 8) +
+  theme_minimal() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(hjust = 0.5, size = 24),
+        axis.text = element_text(color = "black", size = 14,),
+        axis.text.x = element_text(color = "black", size = 14, angle = 45, hjust = 1, vjust = 1),
+        axis.title = element_text(color = "black", size = 20,))
+
+p3
+
+```
+
+## Control AngII vs. PT ACE2 AngII DEGs
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+SO <- readRDS(here("Temp Outputs", "SO_jwn101823.rds"))
+
+# Create a list of all the cluster names in the Seurat Object
+
+clusters <- unique(SO@meta.data$class.jwn2)
+names(clusters) <- clusters
+
+SO <- PrepSCTFindMarkers(SO)
+DEG.env <- new.env()
+
+# Create a forloop that cycles through clusters to find DEGS between AngII and Saline Treatment
+
+for (i in clusters) {
+DEGs <- FindMarkers(SO, ident.1 = "PT ACE2 KO AngII", ident.2 = "Control AngII", group.by = "Experimental_Groups", subset.ident = i)
+DEGs <- DEGs %>% rownames_to_column("gene") %>% filter(p_val_adj < .05)
+DEGs <- DEGs[order(DEGs[,"avg_log2FC"], decreasing = TRUE),]
+assign(paste0(names(clusters[i]), "_D"), DEGs, envir = DEG.env)
+}
+
+list_objects <- ls(DEG.env)
+save(list = list_objects, file = here("ConAngII_v_KOAngII_DEGs.RData"), envir = DEG.env)
+
+allobj <- ls(DEG.env)
+alldf <- sapply(allobj, get, simplify = FALSE, envir = DEG.env)
+alldf <- alldf[sapply(alldf, inherits, "data.frame")]
+custom_order <- c("PTS1", "PTS2", "PTS3", "dTL", "TAL", "MD", "DCT1", "DCT2", "CNT", "PC", "ICA", "ICB", "Podo", "PEC", "EC", "Fib", "Contractile", "Mes", "Macro", "Lympho", "Uro")
+custom_order <- paste0(custom_order, "_D")
+alldf <- alldf[match(custom_order, names(alldf))]
+
+write.xlsx(alldf, sheetName = names(alldf), file = here("ConAngII_v_KOAngII_DEGs.xlsx"))
+
+#remove all objects from the DEG.env
+
+rm(list = ls(DEG.env), envir = DEG.env)
+
+VlnPlot(SO, features = "Col4a3", group.by = "Experimental_Groups", idents = "PTS1") +
+  ggtitle(" PT ACE2 KO Saline vs. PT ACE2 KO AngII Col4a3")
+
+VlnPlot(SO, features = "Col4a3", group.by = "Experimental_Groups", split.by = "Sample_ID", idents = "PTS1") +
+  ggtitle(" PT ACE2 KO Saline vs. PT ACE2 KO AngII Col4a3")
+
+```
+
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+rm(list = ls())
+
+load(here("ConAngII_v_KOAngII_DEGs.RData"))
+
+# Remove the "_D" suffix from each of the objects in the environment
+
+# List the objects in the environment
+objects_in_environment <- ls()
+
+# Filter the objects with the "_D" suffix
+objects_to_rename <- grep("_D$", objects_in_environment, value = TRUE)
+
+# Rename each object by removing the "_D" suffix
+for (object in objects_to_rename) {
+  new_name <- sub("_D$", "", object)
+  assign(new_name, get(object))
+  rm(list = object)
+}
+
+# Clean up by removing objects_to_rename
+rm(objects_to_rename)
+
+
+data_frames <- Filter(is.data.frame, mget(ls()))
+
+# Initialize an empty data frame to store the results
+output_table <- data.frame(Data_Frame = character(),
+                           Number_of_Obs = numeric(),
+                           Number_of_Positive_Log2FC = numeric(),
+                           Number_of_Negative_Log2FC = numeric(),
+                           stringsAsFactors = FALSE)
+
+# Loop through each data frame
+for (df_name in names(data_frames)) {
+  df <- data_frames[[df_name]]
+  
+  # Get the number of observations in the data frame
+  num_obs <- nrow(df)
+  
+  # Count the number of observations with positive log2FC
+  positive_count <- sum(df$avg_log2FC > 0)
+  
+  # Count the number of observations with negative log2FC
+  negative_count <- sum(df$avg_log2FC < 0)
+  
+  # Create a row in the output table
+  output_row <- data.frame(Data_Frame = df_name,
+                           Number_of_Obs = num_obs,
+                           Number_of_Positive_Log2FC = positive_count,
+                           Number_of_Negative_Log2FC = negative_count,
+                           stringsAsFactors = FALSE)
+  
+  # Append the row to the output table
+  output_table <- rbind(output_table, output_row)
+}
+
+# Measure the total number of DEGs (sum of output_table$Number_of_Obs)
+v4 <-sum(output_table$Number_of_Obs)
+print("Total Number of DEGs")
+print(v4)
+
+
+# Print the output table
+print(output_table)
+
+output_table2 <- output_table %>% 
+                 mutate(Data_Frame = sub(".*\\.", "", Data_Frame)) %>%
+                 arrange(desc(Number_of_Obs)) %>%
+                 mutate(Data_Frame = factor(Data_Frame, levels = unique(Data_Frame)))
+
+p3 <- ggplot(output_table2, aes(x = Data_Frame)) +
+  geom_bar(aes(y = Number_of_Positive_Log2FC), stat = "identity", fill = "coral2") +
+  geom_bar(aes(y = -Number_of_Negative_Log2FC), stat = "identity", fill = "dodgerblue2") +
+  labs(x = "Cell Type", y = "Number of DEGs") +
+  ggtitle("Control AngII vs. PT ACE2 AngII DEGs DEGs") +
+  scale_y_continuous(labels = function(x) abs(x)) +
+  annotate("text", x = Inf, y = Inf, label = "Positive Log2FC", color = "coral2",
+           hjust = 1, vjust = 1, size = 8) +
+  annotate("text", x = Inf, y = Inf, label = "Negative Log2FC", color = "dodgerblue2",
+           hjust = 1, vjust = 2.1, size = 8) +
+  theme_minimal() + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(hjust = 0.5, size = 24),
+        axis.text = element_text(color = "black", size = 14,),
+        axis.text.x = element_text(color = "black", size = 14, angle = 45, hjust = 1, vjust = 1),
+        axis.title = element_text(color = "black", size = 20,))
+
+p3
+
+```
+
+# Session Info
+
+```{r echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, fig.align = 'center'}
+
+sessionInfo()
+
+```

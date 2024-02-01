@@ -1,0 +1,648 @@
+---
+title: "PT ACE2 KO PT Pathways"
+author: "Jonathan Nelson & Jackie Emathinger"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document: 
+    toc: yes
+    toc_depth: 3
+    toc_float: false
+    number_sections: no
+    theme: bootstrap
+    df_print: paged
+    code_folding: hide
+    highlight: pygments
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(repos = c(CRAN = "https://cran.rstudio.com/"))
+```
+
+
+```{r load new packages, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+
+if (!require("knitr")) {install.packages("knitr"); require("knitr")}
+if (!requireNamespace('BiocManager', quietly = TRUE)) {install.packages('BiocManager'); require("BiocManager")}
+if (!require("dplyr")) {install.packages("dplyr"); require("dplyr")}
+if (!require("tidyverse")) {install.packages("tidyverse"); require("tidyverse")}
+
+
+if (!require("clusterProfiler")) {BiocManager::install('clusterProfiler'); require("clusterProfiler")}
+if (!require("enrichplot")) {BiocManager::install('enrichplot'); require("enrichplot")}
+
+
+if (!require("ggrepel")) {install.packages("ggrepel"); require("ggrepel")}
+if (!require("gghighlight")) {install.packages("gghighlight"); require("gghighlight")}
+if (!require("ggpmisc")) {install.packages("ggpmisc"); require("ggpmisc")}
+if (!require("ggupset")) {install.packages("ggupset"); require("ggupset")}
+if (!require("ggplot2")) {install.packages("ggplot2"); require("ggplot2")}
+if (!require("RColorBrewer")) {install.packages("RColorBrewer"); require("RColorBrewer")}
+
+if (!require("AnnotationHub")) {BiocManager::install('AnnotationHub'); require("AnnotationHub")}
+if (!require("org.Mm.eg.db")) {BiocManager::install('org.Mm.eg.db'); require("org.Mm.eg.db")}
+if (!require("stringr")) {install.packages("stringr"); require("stringr")}
+if (!require("car")) {install.packages("car"); require("car")}
+if (!require("openxlsx")) {install.packages("openxlsx"); require("openxlsx")}
+if (!require("readxl")) {install.packages("readxl"); require("readxl")}
+if (!require("data.table")) {install.packages("data.table"); require("data.table")}
+if (!require("here")) {install.packages("here"); require("here")}
+if (!require("stats")) {install.packages("stats"); require("stats")}
+
+library(stats)
+
+#install.packages("kableExtra") # Install the package
+library(kableExtra)           # Load the package
+
+#install.packages("scCustomize")
+library(scCustomize)
+
+if(!require("magick")) {install.packages("magick",repos = "http://cran.us.r-project.org"); require("magick")}
+if (!require("EnhancedVolcano")) {BiocManager::install('EnhancedVolcano'); require("EnhancedVolcano")} # volcano plot
+
+
+library("Seurat")
+library("ggplot2")
+library("cowplot")
+here()
+
+SO <- readRDS(here("GSE253448_PTACE2KO.rds"))
+```
+
+# Load SO cluster-named dataset
+
+```{r  echo=TRUE, warning=FALSE, error=FALSE, message=FALSE}
+Idents(SO)<-"class.jwn2"
+DimPlot(SO, reduction = "umap", group.by= "Treatment")
+DimPlot(SO)
+DimPlot(SO, group.by = "class")
+
+
+SO_PT <- subset(SO, idents = c("PTS1", "PTS2", "PTS3"))
+
+DimPlot(SO_PT)
+```
+
+# Comparisons
+
+Comp1 =  KO Saline vs. Control Saline (higher in KO Saline positive)
+Comp2  = KO AngII vs. Control AngII (higher in KO AngII positive)
+
+## KO Saline vs. Control Saline DEGs (Comp1)
+
+```{r  echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, results=T}
+
+AllPT_Comp1 <- FindMarkers(SO, ident.1 = "PT ACE2 KO Saline", ident.2 = "Control Saline", group.by = "Experimental_Groups", subset.ident = c("PTS1", "PTS2", "PTS3"), logfc.threshold = .25, min.pct = 0.1)
+AllPT_Comp1 <- AllPT_Comp1 %>% rownames_to_column("gene") %>% filter(p_val_adj < .05)
+AllPT_Comp1 <- AllPT_Comp1[order(AllPT_Comp1[,"avg_log2FC"], decreasing = TRUE),]
+
+AllPT_Comp1
+
+write.xlsx(AllPT_Comp1, file = here("KOvCtrl_Saline_All.xlsx"))
+
+
+EnhancedVolcano(AllPT_Comp1,
+                lab = AllPT_Comp1$gene, 
+                title = ("KO-Saline vs. Ctrl-Saline"),
+                subtitle = NULL,
+                caption = NULL,
+                x = 'avg_log2FC', 
+                legendLabels = TRUE, 
+                FCcutoff = 0.25, 
+                y = 'p_val_adj', 
+                labSize = 5, 
+                legendIconSize = 0, 
+                drawConnectors = TRUE, 
+                xlim = c(-2, 3),
+                widthConnectors = 0.75) + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+### KO Saline vs. Control Saline Up
+
+```{r  echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, results=T}
+
+markers <- AllPT_Comp1
+
+head(markers, n = 50)
+
+#markers <- markers %>% rownames_to_column(var="SYMBOL")
+
+markers <- markers %>% rename("gene" = "SYMBOL")
+
+#head(markers, n = 50)
+
+ENTREZ_list <- bitr(geneID = markers$SYMBOL,  #input gene id
+                    fromType = "SYMBOL",           #input id type
+                    toType = "ENTREZID",           #output id type
+                    OrgDb = "org.Mm.eg.db"         #annotation Db
+                    )
+
+markers <-  ENTREZ_list %>% inner_join(markers, by = "SYMBOL")
+
+# Removing genes that are not statistically significant. 
+markers <-  markers %>% dplyr::filter(p_val_adj < 0.05)
+#head(markers, n = 50)
+
+pos.markers <-  markers %>% dplyr::filter(avg_log2FC > 0) %>%  arrange(desc(abs(avg_log2FC)))
+pos.markers
+
+pos.ranks <- pos.markers$ENTREZID[abs(pos.markers$avg_log2FC) > 0.3219]
+length(pos.ranks)
+
+# print the number of values in pos.ranks
+
+
+
+pos_go <- enrichGO(gene = pos.ranks,           #a vector of entrez gene id
+                   OrgDb = "org.Mm.eg.db",    
+                   ont = "all",
+                   readable = TRUE)              #whether mapping gene ID to gene Name
+
+pos_go
+
+dotplot(pos_go, split="ONTOLOGY") +
+        facet_grid(ONTOLOGY~., scale="free") +          #ggplot2 functions
+        ggtitle("KO Saline vs. Control Saline Up Pathways") +
+        theme(plot.title = element_text(hjust = 0.5))
+
+dotplot(pos_go, split="ONTOLOGY") +
+  facet_grid(ONTOLOGY~., scale="free") +
+  ggtitle("KO Saline vs. Control Saline Up Pathways") +
+  theme_bw() +  # You can use a different theme if needed
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 12),  # Adjust title font size
+    axis.text = element_text(size = 9)  # Adjust axis text font size
+  )
+
+
+Comp1pos_go <- pos_go
+saveRDS(Comp1pos_go, here("Temp Outputs", "Comp1posgo.rds")) #Change
+
+write.xlsx(Comp1pos_go, file = here("KOvCtrl_Saline_up.xlsx"))
+
+#GO-Biological Processes
+pos_go.BP <- enrichGO(pos.ranks,
+                OrgDb = "org.Mm.eg.db",
+                ont ="BP",
+                readable=TRUE)
+
+barplot(pos_go.BP, showCategory=20)
+
+dotplot(pos_go.BP, showCategory=15) +
+                #ggplot2 functions
+      ggtitle("KO Saline vs. Control Saline Up Pathways", 
+                 subtitle = "GO-Biological Processes") +
+        theme(plot.title = element_text(hjust = 0.5))
+
+#GO - Cellular components
+pos_go.CC <- enrichGO(pos.ranks,
+                OrgDb = "org.Mm.eg.db",
+                ont ="CC",
+                readable=TRUE)
+
+barplot(pos_go.CC, showCategory=20)
+
+dotplot(pos_go.CC, showCategory=15) +
+                #ggplot2 functions
+        ggtitle("KO Saline vs. Control Saline Up Pathways", 
+                 subtitle = "GO-Cellular Components") +
+        theme(plot.title = element_text(hjust = 0.5))
+
+#GO- Molecular Function
+pos_go.MF <- enrichGO(pos.ranks,
+               OrgDb = "org.Mm.eg.db",
+                ont ="MF",
+                readable=TRUE)
+
+barplot(pos_go.MF, showCategory=20) 
+
+dotplot(pos_go.MF, showCategory=15) +
+                #ggplot2 functions
+        ggtitle("KO Saline vs. Control Saline Up Pathways", 
+                 subtitle = "GO-Molecular Function") +
+        theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+
+```{r  echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, results=T}
+#Examine gene expression by PT segment & Experimental group
+genes <- unlist(head((pos.markers$SYMBOL), n= 10))
+
+for (i in genes) {
+  f1 <- VlnPlot(SO, i, idents = c("PTS1", "PTS2", "PTS3"), split.by = "Experimental_Groups")
+  print(f1)
+  }
+
+VlnPlot(SO, "Slc9a3", idents = c("PTS1", "PTS2", "PTS3"), split.by = "Experimental_Groups")
+VlnPlot(SO, "Col4a4", idents = c("PTS1", "PTS2", "PTS3"), split.by = "Experimental_Groups")
+```
+
+
+### KO Saline vs. Control Saline Down
+
+```{r  echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, results=T}
+
+markers <- AllPT_Comp1
+
+head(markers, n = 50)
+
+#markers <- markers %>% rownames_to_column(var="SYMBOL")
+
+markers <- markers %>% rename("gene" = "SYMBOL")
+
+#head(markers, n = 50)
+
+ENTREZ_list <- bitr(geneID = markers$SYMBOL,  #input gene id
+                    fromType = "SYMBOL",           #input id type
+                    toType = "ENTREZID",           #output id type
+                    OrgDb = "org.Mm.eg.db"         #annotation Db
+                    )
+
+markers <-  ENTREZ_list %>% inner_join(markers, by = "SYMBOL")
+
+# Removing genes that are not statistically significant. 
+markers <-  markers %>% dplyr::filter(p_val_adj < 0.05)
+#head(markers, n = 50)
+
+neg.markers <-  markers %>% dplyr::filter(avg_log2FC < 0) %>%  arrange(desc(abs(avg_log2FC)))
+neg.markers
+
+neg.ranks <- neg.markers$ENTREZID[abs(neg.markers$avg_log2FC) > 0.3219]
+length(neg.ranks)
+
+neg_go <- enrichGO(neg.ranks,
+                OrgDb = "org.Mm.eg.db",
+                ont="all",
+                readable=TRUE)
+
+neg_go
+
+
+dotplot(neg_go, split="ONTOLOGY") +
+  facet_grid(ONTOLOGY~., scale="free") +
+  ggtitle("KO Saline vs. Control Saline Downregulated Pathways") +
+  theme_bw() +  # You can use a different theme if needed
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 12),  # Adjust title font size
+    axis.text = element_text(size = 8.5
+                             )  # Adjust axis text font size
+  )
+
+
+
+Comp1neg_go <- neg_go
+saveRDS(Comp1neg_go, here("Temp Outputs", "Comp1neggo.rds")) #Change
+
+write.xlsx(Comp1neg_go, file = here("KOvCtrl_Saline_Down.xlsx"))
+
+neg.markers.ENTREZID <- neg.markers %>%
+  dplyr::select(ENTREZID, avg_log2FC) %>%
+  column_to_rownames(var = "ENTREZID")
+
+head(neg.markers.ENTREZID)
+
+neg.geneList <- neg.markers.ENTREZID$avg_log2FC
+names(neg.geneList) <- rownames(neg.markers.ENTREZID)
+
+head(neg.geneList)
+
+
+#GO-Biological Processes
+neg_go.BP <- enrichGO(neg.ranks,
+                OrgDb = "org.Mm.eg.db",
+                ont ="BP",
+                readable=TRUE)
+
+barplot(neg_go.BP, showCategory=20)
+
+dotplot(neg_go.BP, showCategory=15) +
+                #ggplot2 functions
+        ggtitle("KO Saline vs. Control Saline Down Pathways", 
+                 subtitle = "GO-Biological Processes") +
+        theme(plot.title = element_text(hjust = 0.5))
+
+#GO - Cellular components
+neg_go.CC <- enrichGO(neg.ranks,
+                OrgDb = "org.Mm.eg.db",
+                ont ="CC",
+                readable=TRUE)
+
+barplot(neg_go.CC, showCategory=20)
+
+dotplot(neg_go.CC, showCategory=15) +
+                #ggplot2 functions
+        ggtitle("KO Saline vs. Control Saline Down Pathways", 
+                 subtitle = "GO-Cellular Components") +
+        theme(plot.title = element_text(hjust = 0.5))
+
+#GO- Molecular Function
+neg_go.MF <- enrichGO(neg.ranks,
+                OrgDb = "org.Mm.eg.db",
+              ont ="MF",
+                readable=TRUE)
+
+barplot(neg_go.MF, showCategory=20) 
+
+dotplot(neg_go.MF, showCategory=15) +
+                #ggplot2 functions
+        ggtitle("KO Saline vs. Control Saline Up Pathways", 
+                 subtitle = "GO-Molecular Function") +
+        theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+```{r  echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, results=T}
+
+genes <- unlist(head((neg.markers$SYMBOL), n= 10))
+
+for (i in genes) {
+  f1 <- VlnPlot(SO, i, idents = c("PTS1", "PTS2", "PTS3"), split.by = "Experimental_Groups")
+  print(f1)
+  }
+
+
+VlnPlot(SO, "Slc6a15", idents = c("PTS1", "PTS2", "PTS3"), split.by = "Experimental_Groups")
+
+VlnPlot(SO, "Cltrn", idents = c("PTS1", "PTS2", "PTS3"), split.by = "Experimental_Groups")
+
+```
+
+
+## KO AngII vs. Control AngII DEGs (Comp2)
+
+```{r  echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, results=T}
+
+AllPT_Comp2 <- FindMarkers(SO, ident.1 = "PT ACE2 KO AngII", ident.2 = "Control AngII", group.by = "Experimental_Groups", subset.ident = c("PTS1", "PTS2", "PTS3"), logfc.threshold = .25, min.pct = 0.1)
+AllPT_Comp2 <- AllPT_Comp2 %>% rownames_to_column("gene") %>% filter(p_val_adj < .05)
+AllPT_Comp1 <- AllPT_Comp1[order(AllPT_Comp1[,"avg_log2FC"], decreasing = TRUE),]
+
+
+
+write.xlsx(AllPT_Comp2, file = here("KOvCtrl_AngII_All2.xlsx"))
+
+EnhancedVolcano(AllPT_Comp2,
+                lab = AllPT_Comp2$gene, 
+                title = ("KO-AngII vs. Ctrl-AngII"),
+                subtitle = NULL,
+                caption = NULL,
+                x = 'avg_log2FC', 
+                legendLabels = NULL, 
+                FCcutoff = 0.25, 
+                y = 'p_val_adj', 
+                labSize = 5, 
+                legendIconSize = 0, 
+                drawConnectors = TRUE, 
+                xlim = c(-2, 3),
+                widthConnectors = 0.75) + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+
+### KO AngII vs. Control AngII Up
+
+```{r  echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, results=T}
+
+markers <- AllPT_Comp2
+
+head(markers, n = 50)
+
+#markers <- markers %>% rownames_to_column(var="SYMBOL")
+
+markers <- markers %>% rename("gene" = "SYMBOL")
+
+#head(markers, n = 50)
+
+ENTREZ_list <- bitr(geneID = markers$SYMBOL,  #input gene id
+                    fromType = "SYMBOL",           #input id type
+                    toType = "ENTREZID",           #output id type
+                    OrgDb = "org.Mm.eg.db"         #annotation Db
+                    )
+
+markers <-  ENTREZ_list %>% inner_join(markers, by = "SYMBOL")
+
+
+
+# Removing genes that are not statistically significant. 
+markers <-  markers %>% dplyr::filter(p_val_adj < 0.05)
+#head(markers, n = 50)
+
+pos.markers <-  markers %>% dplyr::filter(avg_log2FC > 0) %>%  arrange(desc(abs(avg_log2FC)))
+#head(pos.markers, n = 50)
+
+pos.ranks <- pos.markers$ENTREZID[abs(pos.markers$avg_log2FC) > 0.3219]
+#head(pos.ranks)
+
+pos_go <- enrichGO(gene = pos.ranks,           #a vector of entrez gene id
+                   OrgDb = "org.Mm.eg.db",    
+                   ont = "all",
+                   readable = TRUE)              #whether mapping gene ID to gene Name
+
+pos_go
+
+
+dotplot(neg_go, split="ONTOLOGY") +
+  facet_grid(ONTOLOGY~., scale="free") +
+  ggtitle("KO-AngII vs. Control-AngII Upregulated Pathways") +
+ theme_bw() +  # You can use a different theme if needed
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 12),  # Adjust title font size
+    axis.text = element_text(size = 8.5
+                             )  # Adjust axis text font size
+  )
+
+
+Comp2pos_go <- pos_go
+saveRDS(Comp2pos_go, here("Temp Outputs", "Comp2posgo.rds")) #Change
+
+write.xlsx(Comp2pos_go, file = here("KOvCtrl_AngII_up.xlsx"))
+
+
+#GO-Biological Processes
+pos_go.BP <- enrichGO(pos.ranks,
+              OrgDb = "org.Mm.eg.db",
+                ont ="BP",
+                readable=TRUE)
+
+barplot(pos_go.BP, showCategory=20)
+
+dotplot(pos_go.BP, showCategory=15) +
+                #ggplot2 functions
+        ggtitle("KO Saline vs. Control Saline Up Pathways", 
+                subtitle = "GO-Biological Processes") +
+        theme(plot.title = element_text(hjust = 0.5))
+
+
+#GO - Cellular components
+pos_go.CC <- enrichGO(pos.ranks,
+                OrgDb = "org.Mm.eg.db",
+                ont ="CC",
+                readable=TRUE)
+
+barplot(pos_go.CC, showCategory=20) #error when running code
+
+
+
+dotplot(pos_go.CC, showCategory=15) +
+                #ggplot2 functions
+        ggtitle("KO Saline vs. Control Saline Up Pathways", 
+                 subtitle = "GO-Cellular Components") +
+        theme(plot.title = element_text(hjust = 0.5))
+
+#GO- Molecular Function
+pos_go.MF <- enrichGO(pos.ranks,
+               OrgDb = "org.Mm.eg.db",
+                ont ="MF",
+                readable=TRUE)
+
+barplot(pos_go.MF, showCategory=20) 
+
+dotplot(pos_go.MF, showCategory=15) +
+                #ggplot2 functions
+        ggtitle("KO Saline vs. Control Saline Up Pathways", 
+                 subtitle = "GO-Molecular Function") +
+        theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+```{r  echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, results=T}
+
+genes <- unlist(head((pos.markers$SYMBOL), n= 10))
+
+for (i in genes) {
+  f1 <- VlnPlot(SO, i, idents = c("PTS1", "PTS2", "PTS3"), split.by = "Experimental_Groups")
+  print(f1)
+  }
+
+Idents(SO)<-"class"
+
+VlnPlot(SO, "Slc6a18", idents = c("PT"), split.by = "Experimental_Groups")
+
+```
+
+### KO AngII vs. Control AngII Down
+
+```{r  echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, results=T}
+
+markers <- AllPT_Comp2
+
+head(markers, n = 50)
+
+#markers <- markers %>% rownames_to_column(var="SYMBOL")
+
+markers <- markers %>% rename("gene" = "SYMBOL")
+
+#head(markers, n = 50)
+
+ENTREZ_list <- bitr(geneID = markers$SYMBOL,  #input gene id
+                    fromType = "SYMBOL",           #input id type
+                    toType = "ENTREZID",           #output id type
+                    OrgDb = "org.Mm.eg.db"         #annotation Db
+                    )
+
+markers <-  ENTREZ_list %>% inner_join(markers, by = "SYMBOL")
+
+# Removing genes that are not statistically significant. 
+markers <-  markers %>% dplyr::filter(p_val_adj < 0.05)
+#head(markers, n = 50)
+
+neg.markers <-  markers %>% dplyr::filter(avg_log2FC < 0) %>%  arrange(desc(abs(avg_log2FC)))
+#head(neg.markers, n = 50)
+
+neg.ranks <- neg.markers$ENTREZID[abs(neg.markers$avg_log2FC) > 0.3219]
+#head(neg.ranks)
+
+neg_go <- enrichGO(neg.ranks,
+                OrgDb = "org.Mm.eg.db",
+                ont="all",
+                readable=TRUE)
+
+neg_go
+
+dotplot(neg_go, split="ONTOLOGY") +
+  facet_grid(ONTOLOGY~., scale="free") +
+ ggtitle("KO AngII vs. Control AngII Down Pathways") +
+  theme_bw() +  # You can use a different theme if needed
+  theme(
+   plot.title = element_text(hjust = 0.5, size = 12),  # Adjust title font size
+    axis.text = element_text(size = 8.5
+                             )  # Adjust axis text font size
+  )
+
+
+
+Comp2neg_go <- neg_go
+saveRDS(Comp2neg_go, here("Temp Outputs", "Comp2neggo.rds")) #Change
+write.xlsx(Comp2neg_go, file = here("KOvCtrl_AngII_down.xlsx"))
+
+
+neg.markers.ENTREZID <- neg.markers %>%
+  dplyr::select(ENTREZID, avg_log2FC) %>%
+  column_to_rownames(var = "ENTREZID")
+
+head(neg.markers.ENTREZID)
+
+neg.geneList <- neg.markers.ENTREZID$avg_log2FC
+names(neg.geneList) <- rownames(neg.markers.ENTREZID)
+
+head(neg.geneList)
+
+
+#GO-Biological Processes
+neg_go.BP <- enrichGO(neg.ranks,
+                OrgDb = "org.Mm.eg.db",
+                ont ="BP",
+                readable=TRUE)
+
+barplot(neg_go.BP, showCategory=20)
+
+dotplot(neg_go.BP, showCategory=15) +
+                #ggplot2 functions
+        ggtitle("KO Saline vs. Control Saline Down Pathways", 
+                subtitle = "GO-Biological Processes") +
+      theme(plot.title = element_text(hjust = 0.5))
+
+#GO - Cellular components
+neg_go.CC <- enrichGO(neg.ranks,
+               OrgDb = "org.Mm.eg.db",
+                ont ="CC",
+                readable=TRUE)
+
+barplot(neg_go.CC, showCategory=20)
+
+dotplot(neg_go.CC, showCategory=15) +
+                #ggplot2 functions
+        ggtitle("KO Saline vs. Control Saline Down Pathways", 
+                 subtitle = "GO-Cellular Components") +
+        theme(plot.title = element_text(hjust = 0.5))
+
+
+#GO- Molecular Function
+neg_go.MF <- enrichGO(neg.ranks,
+                OrgDb = "org.Mm.eg.db",
+                ont ="MF",
+                readable=TRUE)
+
+barplot(neg_go.MF, showCategory=20) 
+
+dotplot(neg_go.MF, showCategory=15) +
+                #ggplot2 functions
+        ggtitle("KO Saline vs. Control Saline Up Pathways", 
+                 subtitle = "GO-Molecular Function") +
+        theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+# Session Info
+
+```{r  echo=TRUE, warning=FALSE, error=FALSE, message=FALSE, results=T}
+
+sessionInfo()
+
+```
+
+
+
